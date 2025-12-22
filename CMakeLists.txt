@@ -20,6 +20,7 @@ add_executable(Graphic_Assignment2
         src/render/Shader.cpp
         src/render/Mesh.cpp
         src/render/LightingSystem.cpp
+        src/render/TextureUtils.cpp
 
         src/core/Input.cpp
 

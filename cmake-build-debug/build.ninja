@@ -94,6 +94,15 @@ build CMakeFiles\Graphic_Assignment2.dir\src\render\LightingSystem.cpp.obj: CXX_
   TARGET_COMPILE_PDB = CMakeFiles\Graphic_Assignment2.dir\
   TARGET_PDB = Graphic_Assignment2.pdb
 
+build CMakeFiles\Graphic_Assignment2.dir\src\render\TextureUtils.cpp.obj: CXX_COMPILER__Graphic_Assignment2_unscanned_Debug D$:\code\C++\Graphic_Assignment2\src\render\TextureUtils.cpp || cmake_object_order_depends_target_Graphic_Assignment2
+  DEFINES = -DGLFW_DLL
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd
+  INCLUDES = -ID:\code\C++\Graphic_Assignment2\include -ID:\code\C++\Graphic_Assignment2\src -external:IC:\dev\vcpkg\installed\x64-windows\include -external:W0
+  OBJECT_DIR = CMakeFiles\Graphic_Assignment2.dir
+  OBJECT_FILE_DIR = CMakeFiles\Graphic_Assignment2.dir\src\render
+  TARGET_COMPILE_PDB = CMakeFiles\Graphic_Assignment2.dir\
+  TARGET_PDB = Graphic_Assignment2.pdb
+
 build CMakeFiles\Graphic_Assignment2.dir\src\core\Input.cpp.obj: CXX_COMPILER__Graphic_Assignment2_unscanned_Debug D$:\code\C++\Graphic_Assignment2\src\core\Input.cpp || cmake_object_order_depends_target_Graphic_Assignment2
   DEFINES = -DGLFW_DLL
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd
@@ -183,7 +192,7 @@ build CMakeFiles\Graphic_Assignment2.dir\src\stb_image_impl.cpp.obj: CXX_COMPILE
 #############################################
 # Link the executable Graphic_Assignment2.exe
 
-build Graphic_Assignment2.exe: CXX_EXECUTABLE_LINKER__Graphic_Assignment2_Debug CMakeFiles\Graphic_Assignment2.dir\src\main.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\glad.c.obj CMakeFiles\Graphic_Assignment2.dir\src\render\Shader.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\render\Mesh.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\render\LightingSystem.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\core\Input.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\scene\Camera.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\scene\Player.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\scene\Terrain.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\TimeOfDay.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\Sky.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\Sun.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\Environment.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\stb_image_impl.cpp.obj | C$:\dev\vcpkg\installed\x64-windows\debug\lib\glfw3dll.lib C$:\dev\vcpkg\installed\x64-windows\debug\lib\glm.lib
+build Graphic_Assignment2.exe: CXX_EXECUTABLE_LINKER__Graphic_Assignment2_Debug CMakeFiles\Graphic_Assignment2.dir\src\main.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\glad.c.obj CMakeFiles\Graphic_Assignment2.dir\src\render\Shader.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\render\Mesh.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\render\LightingSystem.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\render\TextureUtils.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\core\Input.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\scene\Camera.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\scene\Player.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\scene\Terrain.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\TimeOfDay.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\Sky.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\Sun.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\environment\Environment.cpp.obj CMakeFiles\Graphic_Assignment2.dir\src\stb_image_impl.cpp.obj | C$:\dev\vcpkg\installed\x64-windows\debug\lib\glfw3dll.lib C$:\dev\vcpkg\installed\x64-windows\debug\lib\glm.lib
   FLAGS = /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -MDd
   LINK_FLAGS = /machine:x64 /debug /INCREMENTAL /subsystem:console
   LINK_LIBRARIES = C:\dev\vcpkg\installed\x64-windows\debug\lib\glfw3dll.lib  opengl32.lib  C:\dev\vcpkg\installed\x64-windows\debug\lib\glm.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib

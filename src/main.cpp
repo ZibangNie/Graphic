@@ -266,7 +266,15 @@ int main() {
     double lastTime = glfwGetTime();
 
     Environment environment;
+
     Sky sky;
+    if (!sky.init(assetsRoot,
+              "textures/sky/syferfontein_0d_clear_puresky_4k.hdr",
+              "textures/sky/qwantani_night_puresky_4k.hdr",
+              512)) {
+        std::cerr << "[Main] Sky init failed.\n";
+              }
+
     LightingSystem lighting;
 
 
@@ -292,20 +300,20 @@ int main() {
 
         glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
 
-        // 1) 更新环境（时间 + 太阳）
+        // 1) 更新环境
         environment.update(dt);
 
-        // 2) Sky 设置清屏色（必须在 glClear 前）
-        sky.render(camera, environment);
-
-        // 3) 清屏（必须清 COLOR + DEPTH）
+        // 2) 清屏
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 4) 把环境光照送入 shader（不再依赖 lighting.update）
+        // 3) 画 skybox（在任何场景物体之前）
+        sky.render(camera, proj, environment);
+
+        // 4) 再送光照、画场景
         lighting.applyFromEnvironment(terrainShader, camera, environment);
         lighting.applyFromEnvironment(shader, camera, environment);
-
         world.drawRecursive(view, proj);
+
 
         glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);
         glm::vec3 sunDir = glm::normalize(environment.sun().light().direction);
