@@ -1,24 +1,21 @@
 #pragma once
 
-#include <GLFW/glfw3.h>
+// 不要在头文件里 include GLFW（否则会间接引入 OpenGL 头，导致 glad 报错）
+struct GLFWwindow;
 
 class Input {
 public:
     explicit Input(GLFWwindow* window);
 
-    void update(); // 每帧调用一次，刷新鼠标 delta
-
+    void update();                  // 每帧调用一次，刷新鼠标 delta
     bool keyDown(int glfwKey) const;
+    bool mouseButtonDown(int glfwBtn) const;
 
     // 鼠标移动增量（像素）
     double mouseDeltaX() const { return m_deltaX; }
     double mouseDeltaY() const { return m_deltaY; }
 
-    // 滚轮（每帧消费后清零）
     double consumeScrollY();
-
-    // 可选：按住右键才旋转相机
-    bool mouseButtonDown(int glfwBtn) const;
 
 private:
     GLFWwindow* m_window = nullptr;

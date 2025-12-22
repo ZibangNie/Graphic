@@ -1,21 +1,19 @@
 #pragma once
 #include <glm/glm.hpp>
 
-struct SunLight {
-    glm::vec3 direction;   // world space, pointing FROM fragment TO light? 统一口径见下
-    glm::vec3 color;       // RGB 0..1
-    float intensity;       // scalar
-};
-
-struct AmbientLight {
-    glm::vec3 color;
-    float intensity;
-};
-
+// 统一口径：sunDir = sun -> scene（光线传播方向/入射方向）
+// 你的 shader 已验证：L = normalize(uSunDir) 才是正确方向
 struct LightingState {
-    float timeOfDay01 = 0.25f; // 0..1, 0=午夜, 0.25=日出, 0.5=正午, 0.75=日落
-    SunLight sun;
-    AmbientLight ambient;
+    float time01 = 0.25f;         // 0..1
+    float dayFactor = 0.0f;       // 0..1 白天程度
+    float horizonFactor = 0.0f;   // 0..1 日出日落程度
+
+    glm::vec3 sunDir{0, -1, 0};   // sun -> scene
+    glm::vec3 sunColor{1, 1, 1};
+    float sunIntensity = 1.0f;
+
+    glm::vec3 ambientColor{0.1f, 0.1f, 0.1f};
+    float ambientIntensity = 0.2f;
 };
 
-LightingState ComputeLighting(float timeOfDay01);
+LightingState ComputeLighting(float time01);

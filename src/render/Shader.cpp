@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cstdlib>
 
+
 Shader::~Shader() {
     if (m_program) glDeleteProgram(m_program);
 }

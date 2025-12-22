@@ -24,6 +24,8 @@ add_executable(Graphic_Assignment2
         src/scene/Camera.cpp
         src/scene/Player.cpp
         src/scene/Terrain.cpp
+
+        src/render/LightingSystem.cpp
         src/scene/TimeOfDay.cpp
 
         src/stb_image_impl.cpp

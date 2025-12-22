@@ -1,4 +1,5 @@
-#include "Core/Input.h"
+#include "core/Input.h"
+#include <GLFW/glfw3.h>
 
 Input::Input(GLFWwindow* window) : m_window(window) {
     // 绑定滚轮回调
@@ -14,6 +15,9 @@ void Input::update() {
         m_lastX = x;
         m_lastY = y;
         m_firstMouse = false;
+        m_deltaX = 0.0;
+        m_deltaY = 0.0;
+        return;
     }
 
     m_deltaX = x - m_lastX;

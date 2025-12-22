@@ -18,6 +18,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "scene/Terrain.h"
+#include "render/LightingSystem.h"
 
 static int g_fbW = 1280;
 static int g_fbH = 720;
@@ -229,8 +230,7 @@ int main() {
 
 
     double lastTime = glfwGetTime();
-    float timeOfDay01 = 0.25f;   // 0=午夜, 0.25=日出, 0.5=正午, 0.75=日落
-    float daySpeed = 0.02f;      // 每秒推进多少“天”
+    LightingSystem lighting;
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -255,53 +255,9 @@ int main() {
 
         glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
 
-        // 可选：T/G 调速
-        if (input.keyDown(GLFW_KEY_T)) daySpeed += 0.05f * dt;
-        if (input.keyDown(GLFW_KEY_G)) daySpeed -= 0.05f * dt;
-        daySpeed = glm::clamp(daySpeed, 0.0f, 0.5f);
-
-        timeOfDay01 += daySpeed * dt;
-        timeOfDay01 = std::fmod(timeOfDay01, 1.0f);
-        if (timeOfDay01 < 0.0f) timeOfDay01 += 1.0f;
-
-        // 太阳绕行
-        float theta = (timeOfDay01 - 0.25f) * 2.0f * 3.1415926f;
-        glm::vec3 sunDir = glm::normalize(glm::vec3(std::cos(theta), std::sin(theta), 0.35f));
-
-        float day = glm::clamp(sunDir.y * 0.7f + 0.3f, 0.0f, 1.0f);
-        float horizon = 1.0f - glm::clamp(std::abs(sunDir.y) * 3.0f, 0.0f, 1.0f);
-
-        glm::vec3 noonColor(1.0f, 0.98f, 0.95f);
-        glm::vec3 sunsetColor(1.0f, 0.55f, 0.25f);
-        glm::vec3 nightTint(0.4f, 0.55f, 0.9f);
-
-        glm::vec3 sunColor = glm::mix(noonColor, sunsetColor, horizon);
-        sunColor = glm::mix(nightTint, sunColor, day);
-
-        // 关键：把白天强度拉起来
-        float sunIntensity = glm::mix(0.15f, 2.5f, day);
-        glm::vec3 ambientColor = glm::mix(glm::vec3(0.03f,0.04f,0.07f), glm::vec3(0.55f,0.58f,0.62f), day);
-        float ambientIntensity = glm::mix(0.05f, 0.60f, day);
-
-        glm::vec3 camPos = camera.position;
-
-        // 写入 terrainShader
-        terrainShader.use();
-        terrainShader.setVec3("uSunDir", sunDir);
-        terrainShader.setVec3("uSunColor", sunColor);
-        terrainShader.setFloat("uSunIntensity", sunIntensity);
-        terrainShader.setVec3("uAmbientColor", ambientColor);
-        terrainShader.setFloat("uAmbientIntensity", ambientIntensity);
-        terrainShader.setVec3("uCameraPos", camPos);
-
-        // 如果你后续也让 basic shader 参与光照，再写入 basic shader（否则可先不写）
-        shader.use();
-        shader.setVec3("uSunDir", sunDir);
-        shader.setVec3("uSunColor", sunColor);
-        shader.setFloat("uSunIntensity", sunIntensity);
-        shader.setVec3("uAmbientColor", ambientColor);
-        shader.setFloat("uAmbientIntensity", ambientIntensity);
-        shader.setVec3("uCameraPos", camPos);
+        lighting.update(dt, input);
+        lighting.applyTo(terrainShader, camera);
+        lighting.applyTo(shader, camera);
 
 
 
@@ -313,7 +269,7 @@ int main() {
         // 在 world.drawRecursive(view, proj); 之后
         // 选一个固定的世界参考点：地形中心（更合理）或原点
         glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);
-        glm::vec3 sunPos = worldPivot + sunDir * 120.0f;
+        glm::vec3 sunPos = worldPivot - lighting.state().sunDir * 120.0f;
 
         shader.use();
         shader.setInt("uEmissive", 1);

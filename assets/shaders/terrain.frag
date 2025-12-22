@@ -29,7 +29,7 @@ void main() {
     vec3 albedo = mix(sand, rocky, t);
 
     vec3 N = normalize(vNormalW);
-    vec3 L = normalize(uSunDir);                // 入射光方向
+    vec3 L = normalize(-uSunDir);                // 入射光方向
     float NdotL = max(dot(N, L), 0.0);
 
     // 更“白天”的强度

@@ -4,8 +4,8 @@
 #include "scene/Terrain.h"
 #include "scene/Camera.h"
 
+#include <GLFW/glfw3.h>          // 放到项目头之后（关键）
 #include <glm/gtc/quaternion.hpp>
-
 #include <cmath>
 
 

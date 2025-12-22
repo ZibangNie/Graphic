@@ -1,4 +1,5 @@
 #include "scene/Camera.h"
+#include <GLFW/glfw3.h>
 #include "core/Input.h"
 
 #include <glm/gtc/matrix_transform.hpp>
