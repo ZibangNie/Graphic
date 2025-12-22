@@ -21,6 +21,8 @@ public:
     void setVec3(const char* name, const glm::vec3& v) const;
     void setFloat(const char* name, float f) const;
     void setInt(const char* name, int i) const;
+    void setVec4(const char* name, const glm::vec4& v) const;
+
 
 private:
     GLuint m_program = 0;

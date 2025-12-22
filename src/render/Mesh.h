@@ -18,6 +18,9 @@ public:
 
     void draw() const;
 
+    // Vertex format: pos(3) + normal(3) + uv(2), stride = 8 floats
+    void uploadInterleavedPosNormalUV(const std::vector<float>& vertices);
+
 private:
     GLuint m_vao = 0;
     GLuint m_vbo = 0;

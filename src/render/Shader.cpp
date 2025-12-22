@@ -106,3 +106,8 @@ void Shader::setInt(const char* name, int i) const {
     GLint loc = glGetUniformLocation(m_program, name);
     glUniform1i(loc, i);
 }
+
+void Shader::setVec4(const char* name, const glm::vec4& v) const {
+    GLint loc = glGetUniformLocation(m_program, name);
+    glUniform4fv(loc, 1, &v[0]);
+}

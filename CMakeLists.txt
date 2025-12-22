@@ -33,6 +33,7 @@ add_executable(Graphic_Assignment2
         src/environment/Sky.cpp
         src/environment/Sun.cpp
         src/environment/Environment.cpp
+        src/environment/Water.cpp
 
         src/stb_image_impl.cpp
 )

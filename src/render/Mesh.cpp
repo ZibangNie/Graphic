@@ -62,6 +62,40 @@ void Mesh::uploadInterleavedPosColor(const std::vector<float>& vertices) {
     glBindVertexArray(0);
 }
 
+void Mesh::uploadInterleavedPosNormalUV(const std::vector<float>& vertices) {
+    if (vertices.empty() || vertices.size() % 8 != 0) {
+        std::cerr << "[Mesh] Invalid vertex data (need multiples of 8 floats)\n";
+        std::exit(EXIT_FAILURE);
+    }
+
+    m_vertexCount = static_cast<GLsizei>(vertices.size() / 8);
+
+    if (!m_vao) glGenVertexArrays(1, &m_vao);
+    if (!m_vbo) glGenBuffers(1, &m_vbo);
+
+    glBindVertexArray(m_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glBufferData(GL_ARRAY_BUFFER,
+                 (GLsizeiptr)(vertices.size() * sizeof(float)),
+                 vertices.data(),
+                 GL_STATIC_DRAW);
+
+    // layout(location=0): position
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // layout(location=1): normal
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    // layout(location=2): uv
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
 void Mesh::draw() const {
     glBindVertexArray(m_vao);
     glDrawArrays(GL_TRIANGLES, 0, m_vertexCount);

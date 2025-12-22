@@ -21,6 +21,8 @@
 
 #include "environment/Environment.h"
 #include "environment/Sky.h"
+#include "environment/Water.h"
+
 #include "render/LightingSystem.h"
 
 static int g_fbW = 1280;
@@ -277,6 +279,17 @@ int main() {
 
     LightingSystem lighting;
 
+    Water water;
+    if (!water.init(assetsRoot, g_fbW, g_fbH,
+                    tc.waterHeight,
+                    terrain.MinX(), terrain.MaxX(),
+                    terrain.MinZ(), terrain.MaxZ())) {
+        std::cerr << "[Main] Water init failed.\n";
+                    }
+
+    int lastFbW = g_fbW;
+    int lastFbH = g_fbH;
+
 
     while (!glfwWindowShouldClose(window)) {
         double now = glfwGetTime();
@@ -303,16 +316,75 @@ int main() {
         // 1) 更新环境
         environment.update(dt);
 
-        // 2) 清屏
+        // 如果窗口尺寸变了，重建反射 FBO
+        if (g_fbW != lastFbW || g_fbH != lastFbH) {
+            water.resize(g_fbW, g_fbH);
+            lastFbW = g_fbW;
+            lastFbH = g_fbH;
+        }
+
+        // -------------------------
+        // Pass A: Reflection FBO
+        // -------------------------
+        // 构造镜像相机（关于 y = waterHeight 镜像）
+        Camera camRef = camera;
+        camRef.position.y = 2.0f * tc.waterHeight - camera.position.y;
+        camRef.pivot.y    = 2.0f * tc.waterHeight - camera.pivot.y;
+        glm::mat4 viewRef = camRef.getViewMatrix();
+
+        // clip plane：只保留水面以上（dot >= 0）
+        // y - waterY + eps >= 0 => y >= waterY - eps
+        const float clipEps = 0.02f;
+        glm::vec4 clipPlaneAbove(0.0f, 1.0f, 0.0f, -tc.waterHeight + clipEps);
+
+        // 给会参与反射绘制的 shader 设 clip plane
+        terrainShader.use();
+        terrainShader.setVec4("uClipPlane", clipPlaneAbove);
+
+        shader.use();
+        shader.setVec4("uClipPlane", clipPlaneAbove);
+
+        glEnable(GL_CLIP_DISTANCE0);
+
+        water.beginReflectionPass();
+
+        // 反射 pass 中也画天空盒（用镜像相机）
+        sky.render(camRef, proj, environment);
+
+        // 反射 pass：同样送光照（cameraPos 用镜像相机更严谨）
+        lighting.applyFromEnvironment(terrainShader, camRef, environment);
+        lighting.applyFromEnvironment(shader, camRef, environment);
+
+        // 画场景（不画水）
+        world.drawRecursive(viewRef, proj);
+
+        water.endReflectionPass(g_fbW, g_fbH);
+
+        glDisable(GL_CLIP_DISTANCE0);
+
+        // 还原 clip plane（永远不过裁剪）
+        glm::vec4 clipPlaneOff(0.0f, 1.0f, 0.0f, 1000000.0f);
+        terrainShader.use();
+        terrainShader.setVec4("uClipPlane", clipPlaneOff);
+        shader.use();
+        shader.setVec4("uClipPlane", clipPlaneOff);
+
+        // -------------------------
+        // Pass B: Normal scene
+        // -------------------------
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 3) 画 skybox（在任何场景物体之前）
         sky.render(camera, proj, environment);
 
-        // 4) 再送光照、画场景
         lighting.applyFromEnvironment(terrainShader, camera, environment);
         lighting.applyFromEnvironment(shader, camera, environment);
         world.drawRecursive(view, proj);
+
+        // -------------------------
+        // Pass C: Water surface
+        // -------------------------
+        water.render(camera, view, proj, viewRef, environment, lighting, (float)now);
+
 
 
         glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);

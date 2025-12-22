@@ -7,12 +7,14 @@ uniform mat4 uView;
 uniform mat4 uProj;
 
 uniform vec3 uTint;
+uniform vec4 uClipPlane;
 
 out vec3 vColor;
 out vec3 vWorldPos;   // NEW
 
 void main() {
     vec4 wp = uModel * vec4(aPos, 1.0);
+    gl_ClipDistance[0] = dot(wp, uClipPlane);
     vWorldPos = wp.xyz;                 // NEW
     vColor = aColor * uTint;
     gl_Position = uProj * uView * wp;
