@@ -1,0 +1,15 @@
+# ninja log v6
+11	860	7880369401736658	CMakeFiles/Graphic_Assignment2.dir/src/stb_image_impl.cpp.obj	3f5a65ee3c124aa2
+24	1602	7880919649729219	CMakeFiles/Graphic_Assignment2.dir/src/main.cpp.obj	c550a45271381d2b
+6	379	7879769202269588	CMakeFiles/Graphic_Assignment2.dir/src/glad.c.obj	93e3d4cef6edc466
+22	204	7880922747899286	build.ninja	1711a9f0659b29f7
+1603	3207	7880919665507953	Graphic_Assignment2.exe	71d9490b60632389
+30	1027	7880285744296019	CMakeFiles/Graphic_Assignment2.dir/src/scene/Camera.cpp.obj	eb6186cf09d89c7c
+10	542	7879786031072038	CMakeFiles/Graphic_Assignment2.dir/src/render/Mesh.cpp.obj	15868dd31f20ff06
+12	77	7879769202319498	CMakeFiles/Graphic_Assignment2.dir/src/core/Input.cpp.obj	8642e581a665bd91
+8	660	7879769202279474	CMakeFiles/Graphic_Assignment2.dir/src/render/Shader.cpp.obj	32441c11414e42d2
+9	988	7880369401721075	CMakeFiles/Graphic_Assignment2.dir/src/scene/Player.cpp.obj	f0b075c1d1b53715
+5	410	7880153238672590	CMakeFiles/Graphic_Assignment2.dir/src/scene/Terrain.cpp.obj	887d1e1e70f38d05
+3	195	7880922747899286	build.ninja	1711a9f0659b29f7
+4	362	7880922748252907	CMakeFiles/Graphic_Assignment2.dir/src/scene/TimeOfDay.cpp.obj	f1e135a8cf5c4ec
+363	1781	7880922751837711	Graphic_Assignment2.exe	9bef85b4edc80df6
