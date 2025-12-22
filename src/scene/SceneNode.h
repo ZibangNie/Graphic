@@ -48,8 +48,9 @@ public:
             shader->setMat4("uProj", proj);
             shader->setVec3("uTint", tint); // 若 shader 没有 uTint，location=-1 会被 OpenGL 忽略
 
-            // --- Terrain material binding (optional, only if tex0/tex1 provided) ---
-            if (tex0 != 0 && tex1 != 0) {
+            // --- Terrain material binding ---
+            {
+                // 即使某张纹理是 0，也绑定到对应 unit（但建议 main.cpp 已经提供 fallback，避免 0）
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, tex0);
                 shader->setInt("uRocky", 0);
@@ -65,13 +66,10 @@ public:
 
             mesh->draw();
 
-            // 可选：解绑，避免后续节点误用（不是必须，但更干净）
-            if (tex0 != 0 && tex1 != 0) {
-                glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_2D, 0);
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, 0);
         }
 
         for (const auto& c : m_children) {

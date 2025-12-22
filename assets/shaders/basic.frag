@@ -12,6 +12,7 @@ uniform vec3  uAmbientColor;
 uniform float uAmbientIntensity;
 
 uniform vec3  uCameraPos;
+uniform vec3 uTint;
 
 uniform int uEmissive; // 0/1
 
@@ -19,7 +20,7 @@ uniform int uEmissive; // 0/1
 
 void main() {
     if (uEmissive == 1) {
-        FragColor = vec4(vColor, 1.0); // 或者 uTint 后的颜色
+        FragColor = vec4(uTint, 1.0);
         return;
     }
     // 否则走正常光照
@@ -30,7 +31,7 @@ void main() {
     vec3 dpdy = dFdy(vWorldPos);
     vec3 N = normalize(cross(dpdx, dpdy));
 
-    vec3 L = normalize(-uSunDir);
+    vec3 L = normalize(uSunDir);
     float NdotL = max(dot(N, L), 0.0);
 
     vec3 ambient = albedo * uAmbientColor * uAmbientIntensity;
@@ -38,4 +39,5 @@ void main() {
 
     vec3 color = ambient + diffuse;
     FragColor = vec4(color, 1.0);
+
 }

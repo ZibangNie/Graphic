@@ -1,34 +1,42 @@
 #include "LightingSystem.h"
-#include <GLFW/glfw3.h>
-#include <cmath>
-#include <algorithm>
 
-void LightingSystem::update(float dt, const Input& input) {
-    // 调速（你也可以把键位挪到外面）
-    if (input.keyDown(GLFW_KEY_T)) daySpeed += 0.05f * dt;
-    if (input.keyDown(GLFW_KEY_G)) daySpeed -= 0.05f * dt;
-    daySpeed = std::clamp(daySpeed, 0.0f, 0.5f);
+#include "scene/Camera.h"
+#include "environment/Environment.h"
 
-    time01 += daySpeed * dt;
-    time01 = std::fmod(time01, 1.0f);
-    if (time01 < 0.0f) time01 += 1.0f;
+#include <glm/glm.hpp>
 
-    m_state = ComputeLighting(time01);
-    m_state.time01 = time01;
+void LightingSystem::applyDirectionalLight(Shader& shader, const DirectionalLight& light) const {
+    shader.use();
+    shader.setVec3("uSunDir", glm::normalize(light.direction));
+    shader.setVec3("uSunColor", light.color);
+    shader.setFloat("uSunIntensity", light.intensity);
 
+    // 默认环境光，避免全黑
+    shader.setVec3("uAmbientColor", glm::vec3(1.0f));
+    shader.setFloat("uAmbientIntensity", 0.35f);
 }
 
-void LightingSystem::applyTo(Shader& shader, const Camera& camera) const {
+void LightingSystem::applyFromEnvironment(Shader& shader, const Camera& camera, const Environment& env) const {
+    const DirectionalLight& L = env.sun().light();
+
     shader.use();
-    shader.setVec3("uSunDir", m_state.sunDir);
-    shader.setVec3("uSunColor", m_state.sunColor);
-    shader.setFloat("uSunIntensity", m_state.sunIntensity);
-    shader.setVec3("uAmbientColor", m_state.ambientColor);
-    shader.setFloat("uAmbientIntensity", m_state.ambientIntensity);
+    shader.setVec3("uSunDir", glm::normalize(L.direction));
+    shader.setVec3("uSunColor", L.color);
+    shader.setFloat("uSunIntensity", L.intensity);
+
+    shader.setVec3("uAmbientColor", glm::vec3(1.0f));
+    float sunY = glm::normalize(L.direction).y;
+    float day = glm::clamp((sunY - 0.02f) / 0.35f, 0.0f, 1.0f);
+    day = day * day;
+
+    // 夜晚 ambient 很低，白天也不要太高（否则永远“亮堂堂”）
+    float ambIntensity = 0.01f + 0.20f * day;
+
+    shader.setVec3("uAmbientColor", glm::vec3(1.0f));
+    shader.setFloat("uAmbientIntensity", ambIntensity);
+
     shader.setVec3("uCameraPos", camera.position);
 
-    // 预留：天空/粒子/雾会用
-    shader.setFloat("uTimeOfDay01", m_state.time01);
-    shader.setFloat("uDayFactor", m_state.dayFactor);
-    shader.setFloat("uHorizonFactor", m_state.horizonFactor);
+    // 只有当你的 shader 里真的声明了 uTimeOfDay01 才需要保留
+    shader.setFloat("uTimeOfDay01", env.time().normalizedTime());
 }

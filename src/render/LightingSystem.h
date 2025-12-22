@@ -1,20 +1,17 @@
 #pragma once
-#include <glm/glm.hpp>
-#include "core/Input.h"
-#include "render/Shader.h"
-#include "scene/Camera.h"
-#include "scene/TimeOfDay.h"
+
+#include "Shader.h"
+#include "environment/Sun.h"   // DirectionalLight 定义在这里（按你工程实际路径）
+
+// 用前置声明避免头文件互相包含
+class Camera;
+class Environment;
 
 class LightingSystem {
 public:
-    void update(float dt, const Input& input);
-    void applyTo(Shader& shader, const Camera& camera) const;
+    // 最基础：直接把一束平行光写入 shader
+    void applyDirectionalLight(Shader& shader, const DirectionalLight& light) const;
 
-    const LightingState& state() const { return m_state; }
-
-    float daySpeed = 0.02f;
-    float time01   = 0.25f;
-
-private:
-    LightingState m_state{};
+    // 新版：从 Environment 中取太阳光与时间，写入 shader
+    void applyFromEnvironment(Shader& shader, const Camera& camera, const Environment& env) const;
 };

@@ -17,16 +17,21 @@ add_executable(Graphic_Assignment2
         src/main.cpp
         src/glad.c
 
-        src/Render/Shader.cpp
-        src/Render/Mesh.cpp
+        src/render/Shader.cpp
+        src/render/Mesh.cpp
+        src/render/LightingSystem.cpp
 
         src/core/Input.cpp
+
         src/scene/Camera.cpp
         src/scene/Player.cpp
         src/scene/Terrain.cpp
 
-        src/render/LightingSystem.cpp
-        src/scene/TimeOfDay.cpp
+
+        src/environment/TimeOfDay.cpp
+        src/environment/Sky.cpp
+        src/environment/Sun.cpp
+        src/environment/Environment.cpp
 
         src/stb_image_impl.cpp
 )

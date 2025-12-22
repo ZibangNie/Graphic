@@ -18,6 +18,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "scene/Terrain.h"
+
+#include "environment/Environment.h"
+#include "environment/Sky.h"
 #include "render/LightingSystem.h"
 
 static int g_fbW = 1280;
@@ -69,6 +72,23 @@ static GLuint LoadTexture2D(const std::string& path) {
 
     glBindTexture(GL_TEXTURE_2D, 0);
     stbi_image_free(data);
+    return tex;
+}
+
+static GLuint CreateSolidTexture2D(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) {
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    unsigned char pixel[4] = { r, g, b, a };
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
     return tex;
 }
 
@@ -150,8 +170,22 @@ int main() {
 
     // 这里路径按你实际 assets 目录改：你说 assets 外面有 rocky 和 sand 两个材质
     // 例如：assets/textures/rocky/xxx_diff.jpg, assets/textures/sand/xxx_diff.jpg
-    GLuint texRocky = LoadTexture2D((assetsRoot / "textures/rocky/rocky_terrain_02_diff_2k.jpg").string());
-    GLuint texSand  = LoadTexture2D((assetsRoot / "textures/sand/sandy_gravel_02_diff_2k.jpg").string());
+    auto rockyPath = (assetsRoot / "textures/rocky/rocky_terrain_02_diff_2k.jpg").string();
+    auto sandPath  = (assetsRoot / "textures/sand/sandy_gravel_02_diff_2k.jpg").string();
+
+    GLuint texRocky = LoadTexture2D(rockyPath);
+    GLuint texSand  = LoadTexture2D(sandPath);
+
+    // 强制检查：任何一个失败都不允许“悄悄变黑”
+    if (texRocky == 0) {
+        std::cerr << "[Terrain] Rocky texture failed, using fallback. path=" << rockyPath << "\n";
+        texRocky = CreateSolidTexture2D(180, 180, 180); // 灰色
+    }
+    if (texSand == 0) {
+        std::cerr << "[Terrain] Sand texture failed, using fallback. path=" << sandPath << "\n";
+        texSand = CreateSolidTexture2D(200, 190, 140); // 沙色
+    }
+
 
     Shader shader;
     shader.loadFromFiles((assetsRoot / "shaders/basic.vert").string(),
@@ -230,6 +264,9 @@ int main() {
 
 
     double lastTime = glfwGetTime();
+
+    Environment environment;
+    Sky sky;
     LightingSystem lighting;
 
 
@@ -255,36 +292,41 @@ int main() {
 
         glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
 
-        lighting.update(dt, input);
-        lighting.applyTo(terrainShader, camera);
-        lighting.applyTo(shader, camera);
+        // 1) 更新环境（时间 + 太阳）
+        environment.update(dt);
 
+        // 2) Sky 设置清屏色（必须在 glClear 前）
+        sky.render(camera, environment);
 
-
-        glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
+        // 3) 清屏（必须清 COLOR + DEPTH）
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // 4) 把环境光照送入 shader（不再依赖 lighting.update）
+        lighting.applyFromEnvironment(terrainShader, camera, environment);
+        lighting.applyFromEnvironment(shader, camera, environment);
 
         world.drawRecursive(view, proj);
 
-        // 在 world.drawRecursive(view, proj); 之后
-        // 选一个固定的世界参考点：地形中心（更合理）或原点
         glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);
-        glm::vec3 sunPos = worldPivot - lighting.state().sunDir * 120.0f;
+        glm::vec3 sunDir = glm::normalize(environment.sun().light().direction);
 
-        shader.use();
-        shader.setInt("uEmissive", 1);
-        shader.setVec3("uTint", glm::vec3(1.0f, 0.9f, 0.6f));
-        shader.setMat4("uView", view);
-        shader.setMat4("uProj", proj);
-        shader.setVec3("uTint", glm::vec3(1.0f, 0.9f, 0.6f)); // 太阳颜色
+        if (sunDir.y > 0.0f) {
+            glm::vec3 sunPos = worldPivot + sunDir * 120.0f;
 
-        glm::mat4 sunModel(1.0f);
-        sunModel = glm::translate(sunModel, sunPos);
-        sunModel = glm::scale(sunModel, glm::vec3(1.5f));     // 太阳大小
-        shader.setMat4("uModel", sunModel);
+            shader.use();
+            shader.setInt("uEmissive", 1);
+            shader.setVec3("uTint", glm::vec3(1.0f, 0.9f, 0.6f));
+            shader.setMat4("uView", view);
+            shader.setMat4("uProj", proj);
 
-        boxMesh.draw();
-        shader.setInt("uEmissive", 0); // 画完太阳后恢复
+            glm::mat4 sunModel(1.0f);
+            sunModel = glm::translate(sunModel, sunPos);
+            sunModel = glm::scale(sunModel, glm::vec3(1.5f));
+            shader.setMat4("uModel", sunModel);
+
+            boxMesh.draw();
+            shader.setInt("uEmissive", 0);
+        }
 
 
         glfwSwapBuffers(window);
