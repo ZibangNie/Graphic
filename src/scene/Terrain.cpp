@@ -151,20 +151,22 @@ void Terrain::Build(float noiseScale, float heightScale, int seed) {
             float h01 = SampleHeightGrid(x,     z + 1);
             float h11 = SampleHeightGrid(x + 1, z + 1);
 
-            glm::vec3 c00 = colorFromHeight(h00);
-            glm::vec3 c10 = colorFromHeight(h10);
-            glm::vec3 c01 = colorFromHeight(h01);
-            glm::vec3 c11 = colorFromHeight(h11);
+            // 用顶点法线替代“顶点颜色”（aColor 通道现在存 normal）
+            glm::vec3 n00 = GetNormal(x0, z0);
+            glm::vec3 n10 = GetNormal(x1, z0);
+            glm::vec3 n01 = GetNormal(x0, z1);
+            glm::vec3 n11 = GetNormal(x1, z1);
 
             // tri 1: (x0,z0) (x1,z0) (x1,z1)
-            push(x0, h00, z0, c00);
-            push(x1, h10, z0, c10);
-            push(x1, h11, z1, c11);
+            push(x0, h00, z0, n00);
+            push(x1, h10, z0, n10);
+            push(x1, h11, z1, n11);
 
             // tri 2: (x0,z0) (x1,z1) (x0,z1)
-            push(x0, h00, z0, c00);
-            push(x1, h11, z1, c11);
-            push(x0, h01, z1, c01);
+            push(x0, h00, z0, n00);
+            push(x1, h11, z1, n11);
+            push(x0, h01, z1, n01);
+
         }
     }
 

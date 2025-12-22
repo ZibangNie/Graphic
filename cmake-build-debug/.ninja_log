@@ -13,3 +13,8 @@
 3	195	7880922747899286	build.ninja	1711a9f0659b29f7
 4	362	7880922748252907	CMakeFiles/Graphic_Assignment2.dir/src/scene/TimeOfDay.cpp.obj	f1e135a8cf5c4ec
 363	1781	7880922751837711	Graphic_Assignment2.exe	9bef85b4edc80df6
+43	869	7880931311841455	CMakeFiles/Graphic_Assignment2.dir/src/scene/Terrain.cpp.obj	887d1e1e70f38d05
+38	1382	7880931311790798	CMakeFiles/Graphic_Assignment2.dir/src/main.cpp.obj	c550a45271381d2b
+1382	2966	7880931325232391	Graphic_Assignment2.exe	9bef85b4edc80df6
+14	1608	7880948292984047	CMakeFiles/Graphic_Assignment2.dir/src/main.cpp.obj	c550a45271381d2b
+1608	3130	7880948308937496	Graphic_Assignment2.exe	9bef85b4edc80df6

@@ -195,11 +195,6 @@ int main() {
 
     TerrainConfig tc;
 
-    // Example presets (uncomment one if you want)
-    // tc = TerrainConfig{160,160,0.5f,  0.06f,2.5f,1337, -0.5f}; // larger area, same tri count
-    // tc = TerrainConfig{240,240,0.25f, 0.06f,2.5f,1337, -0.5f}; // more detailed, heavier
-    // tc = TerrainConfig{160,160,0.25f, 0.04f,4.0f,1337, -0.5f}; // big hills
-    // tc = TerrainConfig{160,160,0.25f, 0.12f,2.0f,1337, -0.5f}; // noisier
 
     Terrain terrain(tc.widthVerts, tc.depthVerts, tc.gridSpacing);
     terrain.waterHeight = tc.waterHeight;
@@ -316,9 +311,13 @@ int main() {
         world.drawRecursive(view, proj);
 
         // 在 world.drawRecursive(view, proj); 之后
-        glm::vec3 sunPos = player.position() + sunDir * 80.0f;
+        // 选一个固定的世界参考点：地形中心（更合理）或原点
+        glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);
+        glm::vec3 sunPos = worldPivot + sunDir * 120.0f;
 
         shader.use();
+        shader.setInt("uEmissive", 1);
+        shader.setVec3("uTint", glm::vec3(1.0f, 0.9f, 0.6f));
         shader.setMat4("uView", view);
         shader.setMat4("uProj", proj);
         shader.setVec3("uTint", glm::vec3(1.0f, 0.9f, 0.6f)); // 太阳颜色
@@ -329,6 +328,7 @@ int main() {
         shader.setMat4("uModel", sunModel);
 
         boxMesh.draw();
+        shader.setInt("uEmissive", 0); // 画完太阳后恢复
 
 
         glfwSwapBuffers(window);

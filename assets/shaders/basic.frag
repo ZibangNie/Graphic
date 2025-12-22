@@ -12,9 +12,18 @@ uniform vec3  uAmbientColor;
 uniform float uAmbientIntensity;
 
 uniform vec3  uCameraPos;
+
+uniform int uEmissive; // 0/1
+
 // ----------------------------------------------
 
 void main() {
+    if (uEmissive == 1) {
+        FragColor = vec4(vColor, 1.0); // 或者 uTint 后的颜色
+        return;
+    }
+    // 否则走正常光照
+
     vec3 albedo = vColor;
 
     vec3 dpdx = dFdx(vWorldPos);
