@@ -37,6 +37,12 @@
 },
 {
   "directory": "D:/code/C++/Graphic_Assignment2/cmake-build-debug",
+  "command": "\"C:\\PROGRA~1\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\Hostx64\\x64\\cl.exe\"  /nologo /TP -DGLFW_DLL -ID:\\code\\C++\\Graphic_Assignment2\\include -ID:\\code\\C++\\Graphic_Assignment2\\src -external:IC:\\dev\\vcpkg\\installed\\x64-windows\\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /FoCMakeFiles\\Graphic_Assignment2.dir\\src\\render\\Model.cpp.obj /FdCMakeFiles\\Graphic_Assignment2.dir\\ /FS -c D:\\code\\C++\\Graphic_Assignment2\\src\\render\\Model.cpp",
+  "file": "D:\\code\\C++\\Graphic_Assignment2\\src\\render\\Model.cpp",
+  "output": "CMakeFiles\\Graphic_Assignment2.dir\\src\\render\\Model.cpp.obj"
+},
+{
+  "directory": "D:/code/C++/Graphic_Assignment2/cmake-build-debug",
   "command": "\"C:\\PROGRA~1\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\Hostx64\\x64\\cl.exe\"  /nologo /TP -DGLFW_DLL -ID:\\code\\C++\\Graphic_Assignment2\\include -ID:\\code\\C++\\Graphic_Assignment2\\src -external:IC:\\dev\\vcpkg\\installed\\x64-windows\\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /FoCMakeFiles\\Graphic_Assignment2.dir\\src\\core\\Input.cpp.obj /FdCMakeFiles\\Graphic_Assignment2.dir\\ /FS -c D:\\code\\C++\\Graphic_Assignment2\\src\\core\\Input.cpp",
   "file": "D:\\code\\C++\\Graphic_Assignment2\\src\\core\\Input.cpp",
   "output": "CMakeFiles\\Graphic_Assignment2.dir\\src\\core\\Input.cpp.obj"

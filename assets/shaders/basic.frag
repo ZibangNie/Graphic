@@ -23,7 +23,6 @@ void main() {
         FragColor = vec4(uTint, 1.0);
         return;
     }
-    // 否则走正常光照
 
     vec3 albedo = vColor;
 

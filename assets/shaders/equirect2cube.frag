@@ -19,7 +19,6 @@ void main() {
     vec3 dir = normalize(vLocalPos);
     vec2 uv = sampleSphericalMap(dir);
 
-    // 常见 HDR 需要把 V 翻一下（如果你发现上下颠倒，把这行注释/反注释即可）
     uv.y = 1.0 - uv.y;
 
     vec3 color = texture(uEquirect, uv).rgb;

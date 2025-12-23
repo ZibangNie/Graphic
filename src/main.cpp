@@ -27,7 +27,7 @@
 
 
 #include "render/LightingSystem.h"
-
+#include "render/Model.h"
 
 
 static int g_fbW = 1280;
@@ -201,6 +201,27 @@ int main() {
     Shader terrainShader;
     terrainShader.loadFromFiles((assetsRoot / "shaders/terrain.vert").string(),
                                 (assetsRoot / "shaders/terrain.frag").string());
+
+    Shader modelShader;
+    modelShader.loadFromFiles((assetsRoot / "shaders/model.vert").string(),
+                              (assetsRoot / "shaders/model.frag").string());
+
+    Model boat;
+    {
+        auto boatPath = (assetsRoot / "models/boat.glb").string();
+        if (!boat.loadFromGLB(boatPath)) {
+            std::cerr << "[Boat] load failed: " << boatPath << "\n";
+        }
+    }
+
+    // -------------------------
+    // Boat tuning (edit here)
+    // -------------------------
+    static glm::vec3 g_boatPosWS = glm::vec3(-13.0f, 0.0f, -5.0f);  // 世界坐标 x,y,z（你自己调）
+    static float     g_boatYawDeg = 90.0f;                      // 绕Y旋转角度（你自己调）
+    static float     g_boatScale  = 3.0f;                       // 缩放（你自己调）
+    static float     g_boatYOffset = 0.05f;                     // 额外抬高，防止z-fighting（你自己调）
+    static bool      g_boatUseWaterHeight = true;               // true: y=水面高度; false: 使用 g_boatPosWS.y
 
     // Input + Camera
     Input input(window);
@@ -381,6 +402,33 @@ int main() {
         // 画场景（不画水）
         world.drawRecursive(viewRef, proj);
 
+        // --- Draw boat (reflection pass) ---
+        {
+            modelShader.use();
+            modelShader.setVec4("uClipPlane", clipPlaneAbove);
+
+            // 固定位置（世界坐标）
+            glm::vec3 boatPos = g_boatPosWS;
+            if (g_boatUseWaterHeight) {
+                boatPos.y = tc.waterHeight + g_boatYOffset;
+            } else {
+                boatPos.y = boatPos.y + g_boatYOffset;
+            }
+
+            glm::mat4 M(1.0f);
+            M = glm::translate(M, boatPos);
+            M = glm::rotate(M, glm::radians(g_boatYawDeg), glm::vec3(0,1,0));
+            M = glm::scale(M, glm::vec3(g_boatScale));
+
+            // 只对船局部禁用剔除，避免 glTF 绕序问题，同时不污染天空/地形状态
+            GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
+            glDisable(GL_CULL_FACE);
+
+            boat.draw(modelShader, M, viewRef, proj);
+
+            if (wasCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+        }
+
         fire.render(camRef, viewRef, proj, clipPlaneAbove);
 
 
@@ -406,7 +454,34 @@ int main() {
         lighting.applyFromEnvironment(shader, camera, environment);
         world.drawRecursive(view, proj);
 
-        fire.render(camRef, viewRef, proj, clipPlaneAbove);
+        // --- Draw boat (main pass) ---
+        {
+            modelShader.use();
+            modelShader.setVec4("uClipPlane", clipPlaneOff);
+
+            glm::vec3 boatPos = g_boatPosWS;
+            if (g_boatUseWaterHeight) {
+                boatPos.y = tc.waterHeight + g_boatYOffset;
+            } else {
+                boatPos.y = boatPos.y + g_boatYOffset;
+            }
+
+            glm::mat4 M(1.0f);
+            M = glm::translate(M, boatPos);
+            M = glm::rotate(M, glm::radians(g_boatYawDeg), glm::vec3(0,1,0));
+            M = glm::scale(M, glm::vec3(g_boatScale));
+
+            GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
+            glDisable(GL_CULL_FACE);
+
+            boat.draw(modelShader, M, view, proj);
+
+            if (wasCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+        }
+
+
+
+        //fire.render(camRef, viewRef, proj, clipPlaneAbove);
 
         // -------------------------
         // Pass C: Water surface

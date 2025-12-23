@@ -26,14 +26,12 @@ vec3 tonemapReinhard(vec3 x) {
 void main() {
     vec3 dir = normalize(vDir);
 
-    // 夜晚星空做一点旋转
     vec3 dirNight = rotY(uStarRot) * dir;
 
     vec3 colDay   = texture(uSkyDay, dir).rgb;
     vec3 colNight = texture(uSkyNight, dirNight).rgb;
-    colNight *= 0.10;   // 0.10 ~ 0.40 自己调
+    colNight *= 0.10;   // 0.10 ~ 0.40
 
-    // 日夜混合
     vec3 col = mix(colNight, colDay, uDayFactor);
 
     // 太阳圆盘（让太阳“真实存在”）

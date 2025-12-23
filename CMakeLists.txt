@@ -21,6 +21,7 @@ add_executable(Graphic_Assignment2
         src/render/Mesh.cpp
         src/render/LightingSystem.cpp
         src/render/TextureUtils.cpp
+        src/render/Model.cpp
 
         src/core/Input.cpp
 
