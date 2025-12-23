@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <algorithm>
 #include <filesystem>
 
 #include <glad/glad.h>
@@ -22,8 +23,12 @@
 #include "environment/Environment.h"
 #include "environment/Sky.h"
 #include "environment/Water.h"
+#include "environment/Particles.h"
+
 
 #include "render/LightingSystem.h"
+
+
 
 static int g_fbW = 1280;
 static int g_fbH = 720;
@@ -290,6 +295,14 @@ int main() {
     int lastFbW = g_fbW;
     int lastFbH = g_fbH;
 
+    // Campfire particle system (flame + embers + glow)
+    ParticleSystem fire;
+    if (!fire.init((assetsRoot / "shaders/particle.vert").string(),
+                   (assetsRoot / "shaders/particle.frag").string(),
+                   2500)) {
+        std::cerr << "[Main] ParticleSystem init failed.\n";
+                   }
+
 
     while (!glfwWindowShouldClose(window)) {
         double now = glfwGetTime();
@@ -315,6 +328,16 @@ int main() {
 
         // 1) 更新环境
         environment.update(dt);
+
+        // Update campfire emitter near the player (small, offset to the side)
+        glm::vec3 firePos = player.position() + glm::vec3(1.20f, 0.0f, 0.80f);
+        firePos.x = std::max(terrain.MinX() + 0.6f, std::min(firePos.x, terrain.MaxX() - 0.6f));
+        firePos.z = std::max(terrain.MinZ() + 0.6f, std::min(firePos.z, terrain.MaxZ() - 0.6f));
+        firePos.y = terrain.GetHeight(firePos.x, firePos.z) + 0.02f;
+
+        fire.setCampfirePosition(firePos);
+        fire.update(dt, static_cast<float>(now));
+
 
         // 如果窗口尺寸变了，重建反射 FBO
         if (g_fbW != lastFbW || g_fbH != lastFbH) {
@@ -358,6 +381,9 @@ int main() {
         // 画场景（不画水）
         world.drawRecursive(viewRef, proj);
 
+        fire.render(camRef, viewRef, proj, clipPlaneAbove);
+
+
         water.endReflectionPass(g_fbW, g_fbH);
 
         glDisable(GL_CLIP_DISTANCE0);
@@ -380,12 +406,15 @@ int main() {
         lighting.applyFromEnvironment(shader, camera, environment);
         world.drawRecursive(view, proj);
 
+        fire.render(camRef, viewRef, proj, clipPlaneAbove);
+
         // -------------------------
         // Pass C: Water surface
         // -------------------------
         water.render(camera, view, proj, viewRef, environment, lighting, (float)now);
 
-
+        // Campfire particles (draw after water; additive blend + no depth write)
+        fire.render(camera, view, proj, clipPlaneOff);
 
         glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);
         glm::vec3 sunDir = glm::normalize(environment.sun().light().direction);

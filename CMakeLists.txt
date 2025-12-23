@@ -34,6 +34,7 @@ add_executable(Graphic_Assignment2
         src/environment/Sun.cpp
         src/environment/Environment.cpp
         src/environment/Water.cpp
+        src/environment/Particles.cpp
 
         src/stb_image_impl.cpp
 )

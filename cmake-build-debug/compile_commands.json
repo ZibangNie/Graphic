@@ -91,6 +91,12 @@
 },
 {
   "directory": "D:/code/C++/Graphic_Assignment2/cmake-build-debug",
+  "command": "\"C:\\PROGRA~1\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\Hostx64\\x64\\cl.exe\"  /nologo /TP -DGLFW_DLL -ID:\\code\\C++\\Graphic_Assignment2\\include -ID:\\code\\C++\\Graphic_Assignment2\\src -external:IC:\\dev\\vcpkg\\installed\\x64-windows\\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /FoCMakeFiles\\Graphic_Assignment2.dir\\src\\environment\\Particles.cpp.obj /FdCMakeFiles\\Graphic_Assignment2.dir\\ /FS -c D:\\code\\C++\\Graphic_Assignment2\\src\\environment\\Particles.cpp",
+  "file": "D:\\code\\C++\\Graphic_Assignment2\\src\\environment\\Particles.cpp",
+  "output": "CMakeFiles\\Graphic_Assignment2.dir\\src\\environment\\Particles.cpp.obj"
+},
+{
+  "directory": "D:/code/C++/Graphic_Assignment2/cmake-build-debug",
   "command": "\"C:\\PROGRA~1\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\Hostx64\\x64\\cl.exe\"  /nologo /TP -DGLFW_DLL -ID:\\code\\C++\\Graphic_Assignment2\\include -ID:\\code\\C++\\Graphic_Assignment2\\src -external:IC:\\dev\\vcpkg\\installed\\x64-windows\\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd /FoCMakeFiles\\Graphic_Assignment2.dir\\src\\stb_image_impl.cpp.obj /FdCMakeFiles\\Graphic_Assignment2.dir\\ /FS -c D:\\code\\C++\\Graphic_Assignment2\\src\\stb_image_impl.cpp",
   "file": "D:\\code\\C++\\Graphic_Assignment2\\src\\stb_image_impl.cpp",
   "output": "CMakeFiles\\Graphic_Assignment2.dir\\src\\stb_image_impl.cpp.obj"
