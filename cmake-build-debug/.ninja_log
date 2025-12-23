@@ -1,7 +1,7 @@
 # ninja log v6
 36	317	7880968042332106	CMakeFiles/Graphic_Assignment2.dir/src/stb_image_impl.cpp.obj	3f5a65ee3c124aa2
 7	1555	7881958194817335	CMakeFiles/Graphic_Assignment2.dir/src/main.cpp.obj	c550a45271381d2b
-11	211	7881965044979716	build.ninja	1711a9f0659b29f7
+11	211	7882000169592486	build.ninja	1711a9f0659b29f7
 25	882	7881928842507620	CMakeFiles/Graphic_Assignment2.dir/src/environment/TimeOfDay.cpp.obj	97b038e26f82e3d8
 11	668	7880968042075537	CMakeFiles/Graphic_Assignment2.dir/src/glad.c.obj	93e3d4cef6edc466
 1555	3396	7881958210299883	Graphic_Assignment2.exe	1510886deee969d5

@@ -53,7 +53,7 @@ float hash12(vec2 p) {
 }
 
 // noise2: Smoothed 2D value noise in [0,1] using hash12 at lattice points.
-float noise2(vec2 p) {
+float psNoise2(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     float a = hash12(i);
@@ -72,7 +72,7 @@ float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
     for (int i = 0; i < 4; ++i) {
-        v += a * noise2(p);
+        v += a * psNoise2(p);
         p *= 2.03;
         a *= 0.5;
     }
