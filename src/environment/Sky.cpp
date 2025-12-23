@@ -1,10 +1,30 @@
+/*
+ * Sky.cpp
+ *
+ * Purpose:
+ *   Implements the Sky system responsible for:
+ *     - Loading day and night HDR equirectangular environment maps
+ *     - Converting them into cubemaps for efficient sampling
+ *     - Rendering a skybox with a day/night blend and a procedural sun disk (implemented in skybox.frag)
+ *
+ * Rendering pipeline:
+ *   - HDR equirectangular textures are loaded as 2D textures.
+ *   - Each HDR is converted into a cubemap via an offscreen equirect->cubemap pass.
+ *   - Skybox rendering uses a cube mesh and a view matrix with translation removed.
+ *
+ * Notes:
+ *   - Texture conversion utilities are declared locally to avoid including TextureUtils.h here.
+ *   - Depth state is adjusted during skybox draw: depth test uses GL_LEQUAL and depth writes are disabled,
+ *     then restored after rendering.
+ */
+
 #include "Sky.h"
 #include <iostream>
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
 
-// 不用 TextureUtils.h：在这里声明 TextureUtils.cpp 里暴露出来的函数签名
+// TextureUtils forward declarations (implemented in TextureUtils.cpp).
 namespace TextureUtils {
     GLuint LoadHDRTexture2D(const std::string& path);
     GLuint EquirectHDRToCubemap(GLuint hdrTex2D, int cubeSize,
@@ -12,13 +32,29 @@ namespace TextureUtils {
                                 const std::string& e2cFrag);
 }
 
+/*
+ * Smoothstep-like easing function mapping [0,1] -> [0,1] with zero derivatives at endpoints.
+ *
+ * Parameters:
+ *   x : Input value. Values outside [0,1] are clamped.
+ *
+ * Returns:
+ *   Smoothed value in [0,1].
+ */
 static float Smooth01(float x) {
     x = (x < 0.f) ? 0.f : (x > 1.f ? 1.f : x);
     return x * x * (3.f - 2.f * x);
 }
 
+/*
+ * Creates the cube mesh used for skybox rendering.
+ *
+ * Implementation details:
+ *   - 36 vertices (12 triangles) with positions only.
+ *   - Stored in a VAO/VBO as a single attribute at location 0 (vec3 position).
+ */
 void Sky::createCube() {
-    // 36 vertices, positions only
+    // 36 vertices, positions only.
     const float v[] = {
         -1,-1,-1,  1,-1,-1,  1, 1,-1,  1, 1,-1, -1, 1,-1, -1,-1,-1,
         -1,-1, 1,  1,-1, 1,  1, 1, 1,  1, 1, 1, -1, 1, 1, -1,-1, 1,
@@ -35,12 +71,32 @@ void Sky::createCube() {
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
 
+    // Attribute 0: position (vec3).
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
     glBindVertexArray(0);
 }
 
+/*
+ * Initializes the sky system:
+ *   - Loads day/night HDR equirectangular textures
+ *   - Converts each to a cubemap of the requested size
+ *   - Loads the skybox shader program and creates the cube mesh
+ *
+ * Parameters:
+ *   assetsRoot   : Root directory for assets (used to locate shaders and HDR textures).
+ *   dayHdrRel    : Relative path (from assetsRoot) to the day HDR equirectangular image.
+ *   nightHdrRel  : Relative path (from assetsRoot) to the night HDR equirectangular image.
+ *   cubemapSize  : Output cubemap face resolution in pixels (e.g., 512, 1024).
+ *
+ * Returns:
+ *   true on success; false if shader loading, HDR loading, or cubemap conversion fails.
+ *
+ * Side effects:
+ *   - Allocates OpenGL texture objects for cubemaps and a VAO/VBO for the cube.
+ *   - Sets m_ready to true on success.
+ */
 bool Sky::init(const std::filesystem::path& assetsRoot,
                const std::string& dayHdrRel,
                const std::string& nightHdrRel,
@@ -58,7 +114,7 @@ bool Sky::init(const std::filesystem::path& assetsRoot,
         return false;
     }
 
-    // Load HDR
+    // Load HDR equirectangular maps as 2D textures.
     const auto dayPath   = (assetsRoot / dayHdrRel).string();
     const auto nightPath = (assetsRoot / nightHdrRel).string();
 
@@ -72,7 +128,7 @@ bool Sky::init(const std::filesystem::path& assetsRoot,
         return false;
     }
 
-    // HDR -> Cubemap
+    // Convert HDR equirectangular textures into cubemaps for runtime sampling.
     m_dayCube   = TextureUtils::EquirectHDRToCubemap(dayHdr, cubemapSize, e2cVert, e2cFrag);
     m_nightCube = TextureUtils::EquirectHDRToCubemap(nightHdr, cubemapSize, e2cVert, e2cFrag);
 
@@ -91,24 +147,44 @@ bool Sky::init(const std::filesystem::path& assetsRoot,
     return true;
 }
 
+/*
+ * Renders the skybox.
+ *
+ * Parameters:
+ *   camera : Active camera; used to obtain view matrix. Translation is removed to keep the skybox centered.
+ *   proj   : Projection matrix for the current frame.
+ *   env    : Environment state providing sun direction and normalized time-of-day.
+ *
+ * Behavior:
+ *   - Computes uDayFactor from sun height (Y component of sun direction).
+ *   - Computes a slow starfield rotation from normalized time-of-day.
+ *   - Binds day/night cubemaps and draws the cube with the skybox shader.
+ *
+ * Notes:
+ *   - uDayFactor is derived from sunY with a small offset so dawn begins slightly above the horizon.
+ *   - If day/night appear swapped, the sign convention for sun direction may differ; flipping sunY is a common fix.
+ *   - Depth function is temporarily set to GL_LEQUAL and depth writes are disabled during the sky draw.
+ */
 void Sky::render(const Camera& camera, const glm::mat4& proj, const Environment& env) {
     if (!m_ready) return;
 
-    // view without translation
+    // View matrix without translation: keeps skybox "infinitely far" while rotating with the camera.
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 viewNoTrans = glm::mat4(glm::mat3(view));
 
-    // day factor from sun height (你如果发现日夜反了，把 sunY 改成 -sunY)
+    // Day factor derived from sun elevation (Y component). Expected sunY in [-1, 1].
+    // If day/night are inverted, a sign flip on sunY is a typical correction.
     float sunY = env.sun().light().direction.y; // [-1,1]
-    float day = Smooth01((sunY + 0.05f) / 0.35f); // 太阳略高于地平线就开始变亮
+    float day = Smooth01((sunY + 0.05f) / 0.35f); // Starts brightening slightly above the horizon.
 
+    // Starfield rotation: slow spin over the day based on normalized time.
     float t = env.time().normalizedTime();
-    float starRot = t * glm::two_pi<float>() * 0.15f; // 慢转：一天转 0.15 圈左右
+    float starRot = t * glm::two_pi<float>() * 0.15f; // ~0.15 revolutions per day.
 
-    // 太阳在天空的方向：你现在 main 里 sunPos = pivot + sunDir * 120，说明 direction 是“指向太阳的位置”
+    // Sun direction for sky shading; must match the convention expected by skybox.frag (direction toward sun).
     glm::vec3 sunDirSky = glm::normalize(env.sun().light().direction);
 
-    // Draw skybox
+    // Draw skybox with relaxed depth test and disabled depth writes.
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
 
@@ -119,6 +195,7 @@ void Sky::render(const Camera& camera, const glm::mat4& proj, const Environment&
     m_shader.setFloat("uStarRot", starRot);
     m_shader.setVec3("uSunDir", sunDirSky);
 
+    // Bind cubemaps to fixed texture units.
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_CUBE_MAP, m_dayCube);
     m_shader.setInt("uSkyDay", 0);
@@ -131,10 +208,19 @@ void Sky::render(const Camera& camera, const glm::mat4& proj, const Environment&
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
 
+    // Restore depth state.
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_LESS);
 }
 
+/*
+ * Releases sky resources.
+ *
+ * Side effects:
+ *   - Deletes day/night cubemap textures if allocated.
+ *   - Deletes the skybox cube VAO/VBO if allocated.
+ *   - Marks the system as not ready.
+ */
 void Sky::shutdown() {
     if (m_dayCube) glDeleteTextures(1, &m_dayCube);
     if (m_nightCube) glDeleteTextures(1, &m_nightCube);
