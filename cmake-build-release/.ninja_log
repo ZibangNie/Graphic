@@ -1,0 +1,20 @@
+# ninja log v6
+45	141	7881965205115460	CMakeFiles/Graphic_Assignment2.dir/src/environment/TimeOfDay.cpp.obj	a0a3f20fd10d248d
+31	147	7881965204972703	CMakeFiles/Graphic_Assignment2.dir/src/core/Input.cpp.obj	55309e5f2217dcdc
+51	853	7881965205176877	CMakeFiles/Graphic_Assignment2.dir/src/environment/Sun.cpp.obj	df45cf2660e542ab
+10	863	7881965204765201	CMakeFiles/Graphic_Assignment2.dir/src/glad.c.obj	fa276ef24b0d7fb3
+15	866	7881965204814215	CMakeFiles/Graphic_Assignment2.dir/src/render/Mesh.cpp.obj	31d075e304751ef5
+143	868	7881965206091727	CMakeFiles/Graphic_Assignment2.dir/src/environment/Environment.cpp.obj	1d1889c610fee23a
+20	870	7881965204865854	CMakeFiles/Graphic_Assignment2.dir/src/render/LightingSystem.cpp.obj	78a4b660975835f6
+34	872	7881965205007844	CMakeFiles/Graphic_Assignment2.dir/src/scene/Camera.cpp.obj	60a46b79cc00574d
+42	943	7881965205083325	CMakeFiles/Graphic_Assignment2.dir/src/scene/Terrain.cpp.obj	21d5a96bfe3c98cb
+13	1213	7881965204785199	CMakeFiles/Graphic_Assignment2.dir/src/render/Shader.cpp.obj	d59a7e1f75ecebbb
+23	1236	7881965204894370	CMakeFiles/Graphic_Assignment2.dir/src/render/TextureUtils.cpp.obj	984fb9ba9b795c39
+37	1449	7881965205047651	CMakeFiles/Graphic_Assignment2.dir/src/scene/Player.cpp.obj	f4c27f22b4b5eeb8
+48	1616	7881965205148753	CMakeFiles/Graphic_Assignment2.dir/src/environment/Sky.cpp.obj	733668e43583da3d
+863	1754	7881965213296523	CMakeFiles/Graphic_Assignment2.dir/src/stb_image_impl.cpp.obj	735f1b9021e2ae2e
+148	1773	7881965206142825	CMakeFiles/Graphic_Assignment2.dir/src/environment/Water.cpp.obj	cb7a605600b4aaf6
+855	1955	7881965213219362	CMakeFiles/Graphic_Assignment2.dir/src/environment/Particles.cpp.obj	be7d7c7535c76d38
+6	2123	7881965204730373	CMakeFiles/Graphic_Assignment2.dir/src/main.cpp.obj	e168ca97b5c1b2e9
+28	5418	7881965204942567	CMakeFiles/Graphic_Assignment2.dir/src/render/Model.cpp.obj	8db3d0699836795b
+5418	6924	7881965258838653	Graphic_Assignment2.exe	b02325ae043a724a
