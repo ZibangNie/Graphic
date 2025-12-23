@@ -1,3 +1,33 @@
+/*
+ * Model.cpp
+ *
+ * Purpose:
+ *   Implements Model, a minimal glTF (.glb) loader and renderer using tinygltf + OpenGL.
+ *   Focuses on:
+ *     - Loading binary glTF (GLB) geometry and material base color (albedo) textures
+ *     - Building interleaved vertex buffers (pos/normal/uv) with optional index buffers
+ *     - Drawing model parts using a provided shader with a small, fixed uniform interface
+ *
+ * Supported features (intentionally limited):
+ *   - Mesh primitives with POSITION, optional NORMAL, optional TEXCOORD_0
+ *   - BaseColorFactor and BaseColorTexture (PBR metallic-roughness base color only)
+ *   - Node transforms via either a full 4x4 matrix or TRS (translation/rotation/scale)
+ *
+ * Non-goals / omitted features:
+ *   - Skinning, animations, morph targets
+ *   - Metallic/roughness, normal maps, emissive maps, IBL
+ *   - Sampler state from glTF (wrap/filter are set to common defaults)
+ *
+ * Texture loading policy:
+ *   - Disables tinygltf's stb integration and decodes embedded PNG/JPG bytes via the project's stb_image.
+ *   - Forces stbi_set_flip_vertically_on_load(false) for glTF consistency.
+ *
+ * Shader interface expectation (see model.vert/model.frag):
+ *   - uModel, uView, uProj
+ *   - uBaseColorFactor (vec4)
+ *   - uHasAlbedo (int), uAlbedo (sampler2D)
+ */
+
 #include "render/Model.h"
 
 #include <iostream>
@@ -8,16 +38,30 @@
 
 #include "stb_image.h"
 
-// 禁用 tinygltf 内置 stb 实现，避免你现有 stb_image_impl.cpp 重复定义
+// Disable tinygltf built-in stb implementation to avoid symbol duplication with stb_image_impl.cpp.
 #define TINYGLTF_NO_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #define TINYGLTF_IMPLEMENTATION
 #include "tiny_gltf.h"
 
+/*
+ * Constructs a node local transform matrix from glTF node data.
+ *
+ * Parameters:
+ *   n : tinygltf node.
+ *
+ * Returns:
+ *   4x4 transform matrix. If n.matrix is present, uses it directly; otherwise composes TRS:
+ *     M = T * R * S
+ *
+ * Notes:
+ *   - glTF matrices are stored column-major; GLM is also column-major, but the indexing must match glTF's layout.
+ *   - glTF quaternion is [x, y, z, w]; GLM expects (w, x, y, z).
+ */
 static glm::mat4 MatFromNodeTRS(const tinygltf::Node& n) {
     if (n.matrix.size() == 16) {
         glm::mat4 m(1.0f);
-        // glTF matrix is column-major
+        // glTF matrix is column-major.
         for (int c = 0; c < 4; ++c)
             for (int r = 0; r < 4; ++r)
                 m[c][r] = (float)n.matrix[c * 4 + r];
@@ -38,6 +82,22 @@ static glm::mat4 MatFromNodeTRS(const tinygltf::Node& n) {
     return M;
 }
 
+/*
+ * Reads a glTF accessor as a float array and validates the expected component count.
+ *
+ * Parameters:
+ *   model              : Parsed glTF model.
+ *   accessorIndex      : Index of the accessor to read.
+ *   expectedCompCount  : Expected component count per element (1/2/3/4).
+ *   out                : Output float array resized to (count * expectedCompCount).
+ *
+ * Returns:
+ *   true on success; false on validation/read failure.
+ *
+ * Notes:
+ *   - Only FLOAT component type is supported for this helper.
+ *   - Honors bufferView stride if specified; otherwise assumes tightly packed floats.
+ */
 static bool ReadAccessorFloat(const tinygltf::Model& model,
                               int accessorIndex,
                               int expectedCompCount,
@@ -80,6 +140,20 @@ static bool ReadAccessorFloat(const tinygltf::Model& model,
     return true;
 }
 
+/*
+ * Reads a glTF index accessor and expands it to uint32 indices.
+ *
+ * Parameters:
+ *   model         : Parsed glTF model.
+ *   accessorIndex : Index accessor index.
+ *   out           : Output indices as uint32.
+ *
+ * Returns:
+ *   true on success; false on unsupported type or invalid input.
+ *
+ * Supported index component types:
+ *   - UNSIGNED_BYTE, UNSIGNED_SHORT, UNSIGNED_INT
+ */
 static bool ReadIndicesU32(const tinygltf::Model& model, int accessorIndex, std::vector<std::uint32_t>& out) {
     out.clear();
     if (accessorIndex < 0) return false;
@@ -113,6 +187,18 @@ static bool ReadIndicesU32(const tinygltf::Model& model, int accessorIndex, std:
     return false;
 }
 
+/*
+ * Generates vertex normals if the source primitive does not provide NORMAL attributes.
+ *
+ * Parameters:
+ *   pos     : Positions array (3 floats per vertex).
+ *   idx     : Triangle index array.
+ *   normals : Output normals (3 floats per vertex), accumulated per face then normalized.
+ *
+ * Notes:
+ *   - Uses simple area-unweighted face normals and per-vertex accumulation.
+ *   - If a vertex ends up with near-zero accumulated normal, falls back to (0,1,0).
+ */
 static void GenerateNormalsIfMissing(const std::vector<float>& pos, const std::vector<std::uint32_t>& idx, std::vector<float>& normals) {
     const size_t vcount = pos.size() / 3;
     normals.assign(vcount * 3, 0.0f);
@@ -144,10 +230,29 @@ static void GenerateNormalsIfMissing(const std::vector<float>& pos, const std::v
     }
 }
 
+/*
+ * Decodes an encoded image (PNG/JPG) stored in memory and creates an OpenGL 2D texture.
+ *
+ * Parameters:
+ *   bytes     : Pointer to encoded image bytes.
+ *   sizeBytes : Byte count.
+ *
+ * Returns:
+ *   OpenGL texture handle, or 0 on failure.
+ *
+ * Texture defaults:
+ *   - Wrap: GL_REPEAT
+ *   - Min filter: GL_LINEAR_MIPMAP_LINEAR
+ *   - Mag filter: GL_LINEAR
+ *
+ * Notes:
+ *   - Forces stbi_set_flip_vertically_on_load(false) since glTF UV origin expects no vertical flip.
+ *   - Uses the decoded component count to select GL_RED / GL_RGB / GL_RGBA.
+ */
 static GLuint CreateGLTextureFromEncodedImageBytes(const unsigned char* bytes, int sizeBytes) {
     if (!bytes || sizeBytes <= 0) return 0;
 
-    // 你的 main.cpp 会把 flip 设成 true；glTF 通常不希望 flip，所以这里强制关掉再恢复
+    // Disable vertical flip for glTF textures (independent of global stb settings elsewhere).
     stbi_set_flip_vertically_on_load(false);
 
     int w=0, h=0, comp=0;
@@ -177,10 +282,22 @@ static GLuint CreateGLTextureFromEncodedImageBytes(const unsigned char* bytes, i
     return tex;
 }
 
+/*
+ * Destructor.
+ *
+ * Side effects:
+ *   - Releases owned textures and clears loaded parts.
+ */
 Model::~Model() {
     clear();
 }
 
+/*
+ * Clears all loaded model parts and deletes any OpenGL textures created during loading.
+ *
+ * Notes:
+ *   - Textures are tracked in m_ownedTextures so the Model can manage their lifetime.
+ */
 void Model::clear() {
     for (GLuint t : m_ownedTextures) {
         if (t) glDeleteTextures(1, &t);
@@ -189,6 +306,29 @@ void Model::clear() {
     m_parts.clear();
 }
 
+/*
+ * Loads a binary glTF model (.glb) from disk and builds drawable parts.
+ *
+ * Parameters:
+ *   glbPath : File path to the .glb asset.
+ *
+ * Returns:
+ *   true if at least one drawable primitive is loaded; false otherwise.
+ *
+ * Behavior overview:
+ *   - Uses tinygltf to parse GLB without decoding images.
+ *   - For each primitive:
+ *       - Reads POSITION (required), NORMAL/UV (optional)
+ *       - Reads indices (optional; generates sequential indices if missing)
+ *       - Generates normals if missing
+ *       - Creates an interleaved vertex buffer (pos3 + nrm3 + uv2) and uploads it to a Mesh
+ *       - Extracts baseColorFactor and baseColorTexture (if present) and creates an OpenGL texture
+ *       - Stores the primitive as a Model::Part with its local transform
+ *
+ * Notes:
+ *   - Only base color textures are handled; other PBR textures are ignored.
+ *   - Image decoding uses stb_image from memory (bufferView bytes).
+ */
 bool Model::loadFromGLB(const std::string& glbPath) {
     clear();
 
@@ -196,7 +336,8 @@ bool Model::loadFromGLB(const std::string& glbPath) {
     tinygltf::TinyGLTF loader;
     std::string err, warn;
 
-    // 必须提供 LoadImageData 回调，否则会报 "No LoadImageData callback specified."
+    // tinygltf requires an image loader callback when image loading is enabled.
+    // Images are decoded manually from bufferView-encoded bytes, so this callback is a no-op.
     static auto DummyLoadImageData =
         [](tinygltf::Image* image, const int image_idx,
            std::string* err, std::string* warn,
@@ -204,8 +345,7 @@ bool Model::loadFromGLB(const std::string& glbPath) {
            const unsigned char* bytes, int size,
            void* user_data) -> bool
         {
-            // 我们自己后面会从 bufferView 拿编码图片字节并用 stb 解码创建 OpenGL 纹理，
-            // 所以这里不需要 tinygltf 解码。返回 true 让解析继续。
+            // No decoding here; return true to continue parsing.
             return true;
         };
 
@@ -226,9 +366,23 @@ bool Model::loadFromGLB(const std::string& glbPath) {
           << " materials=" << gltf.materials.size()
           << "\n";
 
-    // 预先把 image->GL texture 做缓存（texture index -> GL id）
+    // Cache: glTF image index -> OpenGL texture handle.
     std::unordered_map<int, GLuint> imageTexCache;
 
+    /*
+     * Resolves base color texture + factor from a glTF material.
+     *
+     * Parameters:
+     *   materialIndex : Index into gltf.materials.
+     *   outFactor     : Output baseColorFactor (defaults to 1,1,1,1).
+     *
+     * Returns:
+     *   OpenGL texture handle (0 if no base color texture).
+     *
+     * Notes:
+     *   - Uses pbrMetallicRoughness.baseColorTexture and baseColorFactor.
+     *   - Textures are created once per image and cached across materials/primitives.
+     */
     auto getTextureFromMaterial = [&](int materialIndex, glm::vec4& outFactor) -> GLuint {
         outFactor = glm::vec4(1,1,1,1);
         if (materialIndex < 0 || materialIndex >= (int)gltf.materials.size()) return 0;
@@ -254,7 +408,7 @@ bool Model::loadFromGLB(const std::string& glbPath) {
 
         const auto& img = gltf.images[imageIndex];
 
-        // 如果 tinygltf 没解码（因为我们禁用 stb），从 bufferView 拿到 PNG/JPG 编码字节后自己 decode
+        // When tinygltf does not decode, read encoded bytes from bufferView and decode via stb_image.
         GLuint tex = 0;
         if (img.bufferView >= 0 && img.bufferView < (int)gltf.bufferViews.size()) {
             const auto& bv  = gltf.bufferViews[img.bufferView];
@@ -271,6 +425,7 @@ bool Model::loadFromGLB(const std::string& glbPath) {
         return tex;
     };
 
+    // Recursive scene graph traversal: accumulates parent transforms and emits primitives as Parts.
     std::function<void(int, const glm::mat4&)> processNode;
     processNode = [&](int nodeIndex, const glm::mat4& parent) {
         if (nodeIndex < 0 || nodeIndex >= (int)gltf.nodes.size()) return;
@@ -283,7 +438,7 @@ bool Model::loadFromGLB(const std::string& glbPath) {
             const auto& mesh = gltf.meshes[node.mesh];
 
             for (const auto& prim : mesh.primitives) {
-                // 读取 POSITION/NORMAL/UV
+                // Read POSITION (required), NORMAL/UV (optional).
                 std::vector<float> pos, nrm, uv;
                 auto itPos = prim.attributes.find("POSITION");
                 if (itPos == prim.attributes.end()) continue;
@@ -296,22 +451,22 @@ bool Model::loadFromGLB(const std::string& glbPath) {
                 auto itUV = prim.attributes.find("TEXCOORD_0");
                 if (itUV != prim.attributes.end()) ReadAccessorFloat(gltf, itUV->second, 2, uv);
 
-                // 索引
+                // Indices (optional): if missing, generate sequential indices.
                 std::vector<std::uint32_t> idx;
                 if (prim.indices >= 0) {
                     ReadIndicesU32(gltf, prim.indices, idx);
                 } else {
-                    // 无索引则生成顺序索引
                     const size_t vcount = pos.size() / 3;
                     idx.resize(vcount);
                     for (size_t i = 0; i < vcount; ++i) idx[i] = (std::uint32_t)i;
                 }
 
+                // If normals are missing, compute them from triangles.
                 if (nrm.empty()) {
                     GenerateNormalsIfMissing(pos, idx, nrm);
                 }
 
-                // 组装 interleaved 顶点：pos3 + nrm3 + uv2
+                // Build interleaved vertex buffer: pos3 + nrm3 + uv2 (UV defaults to 0 if absent).
                 const size_t vcount = pos.size() / 3;
                 std::vector<float> interleaved;
                 interleaved.resize(vcount * 8, 0.0f);
@@ -353,6 +508,7 @@ bool Model::loadFromGLB(const std::string& glbPath) {
         }
     };
 
+    // Select scene: defaultScene if provided, otherwise scene 0.
     int sceneIndex = gltf.defaultScene >= 0 ? gltf.defaultScene : 0;
     if (sceneIndex < 0 || sceneIndex >= (int)gltf.scenes.size()) {
         std::cerr << "[GLB] No valid scene\n";
@@ -375,6 +531,27 @@ bool Model::loadFromGLB(const std::string& glbPath) {
     return true;
 }
 
+/*
+ * Draws the model using the provided shader and matrices.
+ *
+ * Parameters:
+ *   shader      : Shader used for model rendering (expects model shader uniform interface).
+ *   modelMatrix : Caller-provided model transform applied to the entire asset.
+ *   view        : View matrix.
+ *   proj        : Projection matrix.
+ *
+ * Behavior:
+ *   - Sets uView/uProj once for the draw call.
+ *   - For each Part:
+ *       - Sets uModel = modelMatrix * part.local
+ *       - Sets uBaseColorFactor
+ *       - Binds base color texture if present and sets uHasAlbedo/uAlbedo
+ *       - Draws the part mesh
+ *
+ * Notes:
+ *   - Texture unit 0 is used for albedo.
+ *   - Does not set clip plane uniforms; clipping (if needed) is handled by the caller/shader configuration.
+ */
 void Model::draw(Shader& shader,
                  const glm::mat4& modelMatrix,
                  const glm::mat4& view,
@@ -398,6 +575,7 @@ void Model::draw(Shader& shader,
 
         p.mesh.draw();
 
+        // Unbind to avoid leaking state to subsequent draws that assume no texture bound on unit 0.
         if (p.albedoTex) {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, 0);
