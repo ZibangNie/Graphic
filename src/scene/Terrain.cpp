@@ -1,12 +1,37 @@
+/*
+ * Terrain.cpp
+ *
+ * Purpose:
+ *   Implements a procedurally generated heightfield terrain with:
+ *     - Deterministic value-noise based FBM height synthesis
+ *     - CPU-side height sampling (bilinear interpolation) for gameplay (player grounding)
+ *     - CPU-side normal estimation (central differences) for lighting
+ *     - GPU mesh generation (two triangles per grid cell)
+ *
+ * Coordinate system:
+ *   - Terrain is generated on the XZ plane with Y as height.
+ *   - m_origin stores the world-space position of the (0,0) grid vertex so the terrain
+ *     is centered around world (0,0) on XZ.
+ *
+ * Notes:
+ *   - The mesh uses "pos + color" upload API, but the color channel is repurposed to store
+ *     per-vertex normals (packed into aColor) for the terrain shader.
+ *   - Value noise and hashing are integer-based to ensure stable reproducibility for a given seed.
+ */
+
 #include "scene/Terrain.h"
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
 
-static inline float Smoothstep(float t) { return t * t * (3.0f - 2.0f * t); }
+static inline float Smoothstep(float t) {
+    // Smooth interpolation curve: t in [0,1] -> smooth [0,1]
+    return t * t * (3.0f - 2.0f * t);
+}
 
 static inline float Hash2D(int x, int z, int seed) {
-    // 稳定可复现的整数哈希 -> [0,1)
+    // Deterministic integer hash -> [0,1).
+    // x/z are grid coordinates; seed controls terrain variation.
     uint32_t h = (uint32_t)(x * 374761393 + z * 668265263) ^ (uint32_t)seed;
     h = (h ^ (h >> 13)) * 1274126177u;
     h ^= (h >> 16);
@@ -14,6 +39,10 @@ static inline float Hash2D(int x, int z, int seed) {
 }
 
 static float ValueNoise(float x, float z, int seed) {
+    // 2D value noise:
+    //   - Hash integer lattice corners
+    //   - Smoothstep-based bilinear interpolation
+    // Returns approximately in [0,1).
     int x0 = (int)std::floor(x);
     int z0 = (int)std::floor(z);
     int x1 = x0 + 1;
@@ -38,15 +67,20 @@ static float ValueNoise(float x, float z, int seed) {
 Terrain::Terrain(int widthVerts, int depthVerts, float gridSpacing)
     : m_widthVerts(widthVerts), m_depthVerts(depthVerts), m_gridSpacing(gridSpacing) {
 
-    // 将地形中心放在 (0,0) 附近，方便你现在玩家初始就在原点附近
+    // Center the terrain around world origin on XZ to simplify initial placement.
     float width = (m_widthVerts - 1) * m_gridSpacing;
     float depth = (m_depthVerts - 1) * m_gridSpacing;
     m_origin = glm::vec2(-width * 0.5f, -depth * 0.5f);
 
+    // Heightfield is stored as a flattened 2D array indexed by [x + z*width].
     m_heights.resize((size_t)m_widthVerts * (size_t)m_depthVerts, 0.0f);
 }
 
 float Terrain::FBM(float x, float z, int seed) const {
+    // Fractal Brownian Motion:
+    //   - Sum multiple octaves of value noise
+    //   - amplitude halves each octave, frequency doubles each octave
+    // Expected range is roughly [-1,1] (not strictly bounded).
     float sum = 0.0f;
     float amp = 0.5f;
     float freq = 1.0f;
@@ -61,13 +95,31 @@ float Terrain::FBM(float x, float z, int seed) const {
 }
 
 float Terrain::SampleHeightGrid(int ix, int iz) const {
+    // Safe access to the cached heightfield using clamped integer indices.
     ix = (int)Clamp((float)ix, 0.0f, (float)m_widthVerts - 1.0f);
     iz = (int)Clamp((float)iz, 0.0f, (float)m_depthVerts - 1.0f);
     return m_heights[(size_t)ix + (size_t)iz * (size_t)m_widthVerts];
 }
 
 void Terrain::Build(float noiseScale, float heightScale, int seed) {
-    // 1) Generate heightfield
+    /*
+     * Generates the terrain heightfield and uploads a triangle mesh to the GPU.
+     *
+     * Parameters:
+     *   noiseScale  : Scales world coordinates before noise evaluation.
+     *                Smaller values => larger features; typical range ~0.03 to 0.20.
+     *   heightScale : Vertical amplitude multiplier in world units.
+     *                Typical range depends on scene scale; e.g., ~1.0 to 6.0.
+     *   seed        : Controls deterministic variation of the terrain.
+     *
+     * Output:
+     *   - m_heights is filled for CPU sampling.
+     *   - m_mesh is updated with an interleaved buffer:
+     *       position (x,y,z) + "color" (r,g,b)
+     *     where the "color" actually stores per-vertex normals for terrain shading.
+     */
+
+    // 1) Generate heightfield.
     for (int z = 0; z < m_depthVerts; ++z) {
         for (int x = 0; x < m_widthVerts; ++x) {
             float wx = m_origin.x + x * m_gridSpacing;
@@ -78,7 +130,8 @@ void Terrain::Build(float noiseScale, float heightScale, int seed) {
         }
     }
 
-    // 2) Build triangle mesh (pos + color), 2 triangles per cell
+    // 2) Build triangle mesh (two triangles per grid cell).
+    // Vertex format: pos(3) + normalPacked(3) stored via Mesh::uploadInterleavedPosColor().
     std::vector<float> v;
     v.reserve((size_t)(m_widthVerts - 1) * (size_t)(m_depthVerts - 1) * 6ull * 6ull);
 
@@ -87,7 +140,8 @@ void Terrain::Build(float noiseScale, float heightScale, int seed) {
         v.push_back(c.r); v.push_back(c.g); v.push_back(c.b);
     };
 
-    // Height-based color ramp (easy to tune)
+    // Height-based color ramp helper remains available for alternative shading/debug.
+    // Currently unused because the "color" channel is repurposed for normals.
     auto colorFromHeight = [&](float h) -> glm::vec3 {
         // ---- Tunable thresholds (world height units) ----
         const float water = waterHeight;     // e.g. -0.5
@@ -138,7 +192,7 @@ void Terrain::Build(float noiseScale, float heightScale, int seed) {
         }
     };
 
-    // Build geometry
+    // Build geometry per cell.
     for (int z = 0; z < m_depthVerts - 1; ++z) {
         for (int x = 0; x < m_widthVerts - 1; ++x) {
             float x0 = m_origin.x + x * m_gridSpacing;
@@ -151,7 +205,7 @@ void Terrain::Build(float noiseScale, float heightScale, int seed) {
             float h01 = SampleHeightGrid(x,     z + 1);
             float h11 = SampleHeightGrid(x + 1, z + 1);
 
-            // 用顶点法线替代“顶点颜色”（aColor 通道现在存 normal）
+            // Per-vertex normals are computed in world space and stored in the "color" channel.
             glm::vec3 n00 = GetNormal(x0, z0);
             glm::vec3 n10 = GetNormal(x1, z0);
             glm::vec3 n01 = GetNormal(x0, z1);
@@ -166,15 +220,28 @@ void Terrain::Build(float noiseScale, float heightScale, int seed) {
             push(x0, h00, z0, n00);
             push(x1, h11, z1, n11);
             push(x0, h01, z1, n01);
-
         }
     }
 
-    // Upload to GPU
+    // Upload to GPU.
     m_mesh.uploadInterleavedPosColor(v);
 }
 
 float Terrain::GetHeight(float worldX, float worldZ) const {
+    /*
+     * Samples terrain height at an arbitrary world-space (x,z) using bilinear interpolation.
+     *
+     * Parameters:
+     *   worldX, worldZ : World-space coordinates on the terrain plane.
+     *
+     * Returns:
+     *   Interpolated height (Y) in world units.
+     *
+     * Notes:
+     *   - Coordinates are clamped to valid grid cell bounds to avoid out-of-range access.
+     *   - The interpolation is performed in local grid space.
+     */
+
     // world -> local grid coords
     float lx = (worldX - m_origin.x) / m_gridSpacing;
     float lz = (worldZ - m_origin.y) / m_gridSpacing;
@@ -182,7 +249,7 @@ float Terrain::GetHeight(float worldX, float worldZ) const {
     int x0 = (int)std::floor(lx);
     int z0 = (int)std::floor(lz);
 
-    // clamp to valid cell range
+    // Clamp to valid cell range.
     x0 = (int)Clamp((float)x0, 0.0f, (float)m_widthVerts - 2.0f);
     z0 = (int)Clamp((float)z0, 0.0f, (float)m_depthVerts - 2.0f);
 
@@ -202,7 +269,20 @@ float Terrain::GetHeight(float worldX, float worldZ) const {
 }
 
 glm::vec3 Terrain::GetNormal(float worldX, float worldZ) const {
-    // 用中心差分近似法线（后续做坡度/水流/材质混合会很有用）
+    /*
+     * Approximates the terrain normal at a world-space (x,z) via central differences.
+     *
+     * Parameters:
+     *   worldX, worldZ : World-space coordinates on the terrain plane.
+     *
+     * Returns:
+     *   Unit-length normal vector in world space.
+     *
+     * Notes:
+     *   - eps is set to m_gridSpacing for a scale-consistent gradient estimate.
+     *   - The constructed vector (-dH/dx, 2*eps, -dH/dz) biases Y upward to avoid near-zero normals.
+     */
+
     float eps = m_gridSpacing;
     float hL = GetHeight(worldX - eps, worldZ);
     float hR = GetHeight(worldX + eps, worldZ);

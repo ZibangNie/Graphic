@@ -1,3 +1,29 @@
+/*
+ * main.cpp
+ *
+ * Purpose:
+ *   Application entry point and frame loop for the assignment scene.
+ *   Responsibilities include:
+ *     - GLFW / GLAD initialization and window lifecycle
+ *     - Asset root discovery and texture/shader loading
+ *     - Scene construction (player, terrain, sky, water, particles, model)
+ *     - Per-frame update (input, camera orbit, player movement, environment time)
+ *     - Multi-pass rendering:
+ *         Pass A: reflection render into water FBO (with clip plane)
+ *         Pass B: main scene render
+ *         Pass C: water surface compositing using reflection texture
+ *         + additive particle rendering and emissive sun disk
+ *
+ * Render conventions:
+ *   - Coordinate system: world Y is up.
+ *   - Clip plane: dot(vec4(worldPos,1), plane) < 0 => clipped (discard / clip distance).
+ *   - Skybox uses view matrix without translation (rotational component only).
+ *
+ * Performance notes:
+ *   - Water reflection FBO uses half-resolution to reduce fill cost.
+ *   - Terrain uses a dense grid; width/depth and spacing should be tuned to avoid excessive triangles.
+ */
+
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -25,20 +51,38 @@
 #include "environment/Water.h"
 #include "environment/Particles.h"
 
-
 #include "render/LightingSystem.h"
 #include "render/Model.h"
-
 
 static int g_fbW = 1280;
 static int g_fbH = 720;
 
+/*
+ * GLFW framebuffer resize callback.
+ *
+ * Parameters:
+ *   w, h : New framebuffer dimensions in pixels. Values may be 0 on minimize.
+ *
+ * Notes:
+ *   - Updates the global framebuffer size used for projection and FBO sizing.
+ *   - Immediately updates GL viewport for subsequent rendering.
+ */
 static void FramebufferSizeCallback(GLFWwindow*, int w, int h) {
     g_fbW = (w > 0) ? w : 1;
     g_fbH = (h > 0) ? h : 1;
     glViewport(0, 0, g_fbW, g_fbH);
 }
 
+/*
+ * Attempts to locate the project assets directory by walking up from CWD.
+ *
+ * Returns:
+ *   Path to ".../assets" if found; empty path otherwise.
+ *
+ * Notes:
+ *   - Search depth is limited to avoid unbounded traversal.
+ *   - Expected project layout: <project_root>/assets/...
+ */
 static std::filesystem::path FindAssetsRoot() {
     namespace fs = std::filesystem;
     fs::path p = fs::current_path();
@@ -51,6 +95,20 @@ static std::filesystem::path FindAssetsRoot() {
     return {};
 }
 
+/*
+ * Loads an 8-bit texture from disk into an OpenGL 2D texture.
+ *
+ * Parameters:
+ *   path : Filesystem path to PNG/JPG/etc.
+ *
+ * Returns:
+ *   OpenGL texture ID (0 on failure).
+ *
+ * Notes:
+ *   - Enables vertical flip for typical image coordinate conventions (top-left origin).
+ *   - Mipmaps are generated; min filter uses trilinear sampling.
+ *   - Wrap mode is REPEAT (appropriate for tiling terrain textures).
+ */
 static GLuint LoadTexture2D(const std::string& path) {
     int w=0, h=0, comp=0;
     stbi_set_flip_vertically_on_load(true);
@@ -82,6 +140,19 @@ static GLuint LoadTexture2D(const std::string& path) {
     return tex;
 }
 
+/*
+ * Creates a 1x1 solid-color RGBA texture.
+ *
+ * Parameters:
+ *   r,g,b,a : 8-bit channel values.
+ *
+ * Returns:
+ *   OpenGL texture ID.
+ *
+ * Notes:
+ *   - Intended as a safe fallback when disk texture loading fails.
+ *   - Uses NEAREST to avoid filtering artifacts on constant textures.
+ */
 static GLuint CreateSolidTexture2D(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) {
     GLuint tex = 0;
     glGenTextures(1, &tex);
@@ -99,8 +170,16 @@ static GLuint CreateSolidTexture2D(unsigned char r, unsigned char g, unsigned ch
     return tex;
 }
 
-// Build a unit cube centered at origin using triangles, with per-vertex color = (1,1,1)
-// Vertex format: pos(3) + color(3)
+/*
+ * Builds a unit cube mesh centered at the origin, using non-indexed triangles.
+ *
+ * Returns:
+ *   Mesh with vertex format: position(3) + color(3).
+ *
+ * Notes:
+ *   - Per-vertex color is initialized to white; final tinting is handled in shaders (uTint).
+ *   - Used as a generic primitive for the player blocks and the emissive sun indicator.
+ */
 static Mesh CreateUnitCubeMesh() {
     Mesh m;
 
@@ -144,6 +223,23 @@ static Mesh CreateUnitCubeMesh() {
     return m;
 }
 
+/*
+ * Program entry point.
+ *
+ * High-level flow:
+ *   1) Initialize GLFW + create OpenGL context
+ *   2) Load GL functions via GLAD
+ *   3) Locate assets and load textures/shaders/models
+ *   4) Construct scene graph and simulation systems
+ *   5) Run main loop:
+ *        - input + camera + player update
+ *        - environment update (time-of-day / sun)
+ *        - reflection pass (water FBO + clip plane)
+ *        - main pass (scene + model)
+ *        - water surface pass (sample reflection)
+ *        - additive particles and emissive sun marker
+ *   6) Cleanup and exit
+ */
 int main() {
     if (!glfwInit()) return -1;
 
@@ -155,7 +251,7 @@ int main() {
     if (!window) { glfwTerminate(); return -1; }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
+    glfwSwapInterval(1); // VSync on
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to init GLAD\n";
@@ -175,37 +271,42 @@ int main() {
         return -1;
     }
 
-    // 这里路径按你实际 assets 目录改：你说 assets 外面有 rocky 和 sand 两个材质
-    // 例如：assets/textures/rocky/xxx_diff.jpg, assets/textures/sand/xxx_diff.jpg
+    // Terrain textures.
+    // Note: paths assume the project asset layout includes:
+    //   assets/textures/rocky/<file>
+    //   assets/textures/sand/<file>
     auto rockyPath = (assetsRoot / "textures/rocky/rocky_terrain_02_diff_2k.jpg").string();
     auto sandPath  = (assetsRoot / "textures/sand/sandy_gravel_02_diff_2k.jpg").string();
 
     GLuint texRocky = LoadTexture2D(rockyPath);
     GLuint texSand  = LoadTexture2D(sandPath);
 
-    // 强制检查：任何一个失败都不允许“悄悄变黑”
+    // Defensive fallback: never allow missing terrain textures to silently black out.
     if (texRocky == 0) {
         std::cerr << "[Terrain] Rocky texture failed, using fallback. path=" << rockyPath << "\n";
-        texRocky = CreateSolidTexture2D(180, 180, 180); // 灰色
+        texRocky = CreateSolidTexture2D(180, 180, 180); // neutral gray
     }
     if (texSand == 0) {
         std::cerr << "[Terrain] Sand texture failed, using fallback. path=" << sandPath << "\n";
-        texSand = CreateSolidTexture2D(200, 190, 140); // 沙色
+        texSand = CreateSolidTexture2D(200, 190, 140); // sand-like color
     }
 
-
+    // Basic untextured shader (used for block-style geometry / emissive sun marker).
     Shader shader;
     shader.loadFromFiles((assetsRoot / "shaders/basic.vert").string(),
                          (assetsRoot / "shaders/basic.frag").string());
 
+    // Terrain shader (texture blending + lighting).
     Shader terrainShader;
     terrainShader.loadFromFiles((assetsRoot / "shaders/terrain.vert").string(),
                                 (assetsRoot / "shaders/terrain.frag").string());
 
+    // Model shader (glTF baseColor texture + factor).
     Shader modelShader;
     modelShader.loadFromFiles((assetsRoot / "shaders/model.vert").string(),
                               (assetsRoot / "shaders/model.frag").string());
 
+    // glTF model: boat.
     Model boat;
     {
         auto boatPath = (assetsRoot / "models/boat.glb").string();
@@ -217,11 +318,17 @@ int main() {
     // -------------------------
     // Boat tuning (edit here)
     // -------------------------
-    static glm::vec3 g_boatPosWS = glm::vec3(-13.0f, 0.0f, -5.0f);  // 世界坐标 x,y,z（你自己调）
-    static float     g_boatYawDeg = 90.0f;                      // 绕Y旋转角度（你自己调）
-    static float     g_boatScale  = 3.0f;                       // 缩放（你自己调）
-    static float     g_boatYOffset = 0.05f;                     // 额外抬高，防止z-fighting（你自己调）
-    static bool      g_boatUseWaterHeight = true;               // true: y=水面高度; false: 使用 g_boatPosWS.y
+    // Notes:
+    //   - g_boatPosWS: world-space anchor position. If g_boatUseWaterHeight is true,
+    //     Y is overridden to water height (+ optional offset).
+    //   - g_boatYawDeg: yaw rotation around world Y axis (degrees).
+    //   - g_boatScale: uniform scale multiplier for the imported model.
+    //   - g_boatYOffset: small positive offset to avoid z-fighting with water surface.
+    static glm::vec3 g_boatPosWS = glm::vec3(-13.0f, 0.0f, -5.0f);  // world x,y,z
+    static float     g_boatYawDeg = 90.0f;                         // degrees
+    static float     g_boatScale  = 3.0f;                          // >0
+    static float     g_boatYOffset = 0.05f;                        // small lift
+    static bool      g_boatUseWaterHeight = true;                  // true: y=water height
 
     // Input + Camera
     Input input(window);
@@ -231,7 +338,7 @@ int main() {
     // Scene root
     SceneNode world("WorldRoot");
 
-    // Box mesh
+    // Box mesh primitive
     Mesh boxMesh = CreateUnitCubeMesh();
 
     // Player (Steve)
@@ -243,26 +350,26 @@ int main() {
     // ------------------------
     struct TerrainConfig {
         // Geometry
-        int   widthVerts   = 320;   // vertex count in X
-        int   depthVerts   = 320;   // vertex count in Z
-        float gridSpacing  = 0.50f; // world units between vertices (bigger -> larger terrain, same tri count)
+        int   widthVerts   = 320;   // vertex count in X (>= 2)
+        int   depthVerts   = 320;   // vertex count in Z (>= 2)
+        float gridSpacing  = 0.50f; // world units between vertices
 
         // Shape
-        float noiseScale   = 0.08f; // smaller -> broader hills; larger -> noisier detail
-        float heightScale  = 10.0f;  // vertical amplitude
-        int   seed         = 1337;  // change to get a different map
+        float noiseScale   = 0.08f; // smaller -> broader hills; larger -> higher-frequency detail
+        float heightScale  = 10.0f; // vertical amplitude (world units)
+        int   seed         = 1337;  // deterministic map seed
 
-        // Water (reserved for later)
-        float waterHeight  = -0.5f; // used by color ramp now; later used by water plane rendering
+        // Water (shared reference height used by terrain and water system)
+        float waterHeight  = -0.5f;
     };
 
     TerrainConfig tc;
-
 
     Terrain terrain(tc.widthVerts, tc.depthVerts, tc.gridSpacing);
     terrain.waterHeight = tc.waterHeight;
     terrain.Build(tc.noiseScale, tc.heightScale, tc.seed);
 
+    // Terrain scene node: binds textures + material parameters for terrain shader.
     auto terrainNode = std::make_unique<SceneNode>("Terrain");
     terrainNode->mesh = &terrain.mesh();
     terrainNode->shader = &terrainShader;
@@ -270,31 +377,30 @@ int main() {
     terrainNode->tex0 = texRocky;
     terrainNode->tex1 = texSand;
 
-    // 纹理密度：越大 = 纹理重复越多。建议从 0.05 起调。
-    // 经验：地图越大、gridSpacing 越大，uvScale 通常要更小一点才不“密得像噪声”。
+    // UV scaling (world-space tiling frequency).
+    // Typical range: ~0.02 .. 0.15 depending on terrain size and desired detail density.
     terrainNode->uvScale = 0.05f;
 
-    // 低处为 sand：直接用你预留的水位线 tc.waterHeight
+    // Height threshold where sand begins (usually aligned with water height).
     terrainNode->sandHeight = tc.waterHeight;
 
-    // 过渡带宽度（世界单位）：越大过渡越柔和
+    // Smooth blend region width (world units). Typical range: ~0.15 .. 1.0.
     terrainNode->blendWidth = 0.35f;
 
-    // tint 保持白色，不影响贴图
+    // Keep tint white so terrain albedo is not unintentionally colored.
     terrainNode->tint = {1.0f, 1.0f, 1.0f};
 
-    // IMPORTANT: keep tint = white so vertex colors are not altered
-    terrainNode->tint = {1.0f, 1.0f, 1.0f};
-
+    // Transform is identity (terrain already authored in world coordinates).
     terrainNode->transform.setLocalScale({1.0f, 1.0f, 1.0f});
     terrainNode->transform.setLocalPosition({0.0f, 0.0f, 0.0f});
     world.addChild(std::move(terrainNode));
 
-
     double lastTime = glfwGetTime();
 
+    // Environment state (time-of-day + sun directional light).
     Environment environment;
 
+    // Sky system (HDR equirect -> cubemap; day/night blend).
     Sky sky;
     if (!sky.init(assetsRoot,
               "textures/sky/syferfontein_0d_clear_puresky_4k.hdr",
@@ -303,8 +409,10 @@ int main() {
         std::cerr << "[Main] Sky init failed.\n";
               }
 
+    // Lighting bridge: writes environment lighting uniforms into shaders.
     LightingSystem lighting;
 
+    // Water system: owns reflection FBO and draws water surface sampling the reflection texture.
     Water water;
     if (!water.init(assetsRoot, g_fbW, g_fbH,
                     tc.waterHeight,
@@ -316,14 +424,13 @@ int main() {
     int lastFbW = g_fbW;
     int lastFbH = g_fbH;
 
-    // Campfire particle system (flame + embers + glow)
+    // Campfire particle system (flame + embers + glow).
     ParticleSystem fire;
     if (!fire.init((assetsRoot / "shaders/particle.vert").string(),
                    (assetsRoot / "shaders/particle.frag").string(),
                    2500)) {
         std::cerr << "[Main] ParticleSystem init failed.\n";
                    }
-
 
     while (!glfwWindowShouldClose(window)) {
         double now = glfwGetTime();
@@ -333,24 +440,29 @@ int main() {
         glfwPollEvents();
         input.update();
 
+        // Global quit.
         if (input.keyDown(GLFW_KEY_ESCAPE)) {
             glfwSetWindowShouldClose(window, GLFW_TRUE);
         }
 
+        // Camera orbit consumes RMB + scroll input; player movement uses keyboard axes.
         camera.updateOrbit(input, player.position());      // consume RMB/scroll first
         player.update(input, dt, terrain, camera);         // move relative to current camera
         camera.updateOrbitNoInput(player.position());      // re-center to new player pos
         glm::mat4 view = camera.getViewMatrix();
 
-
         float aspect = static_cast<float>(g_fbW) / static_cast<float>(g_fbH);
 
+        // Perspective parameters:
+        //   - FOV: 60 deg is a typical third-person baseline.
+        //   - Near: 0.1 (avoid clipping nearby geometry).
+        //   - Far: 200 (must exceed terrain extents + skybox depth usage).
         glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
 
-        // 1) 更新环境
+        // 1) Update environment (time-of-day + sun direction/intensity).
         environment.update(dt);
 
-        // Update campfire emitter near the player (small, offset to the side)
+        // Campfire anchor: offset from player, snapped to terrain height and clamped to bounds.
         glm::vec3 firePos = player.position() + glm::vec3(1.20f, 0.0f, 0.80f);
         firePos.x = std::max(terrain.MinX() + 0.6f, std::min(firePos.x, terrain.MaxX() - 0.6f));
         firePos.z = std::max(terrain.MinZ() + 0.6f, std::min(firePos.z, terrain.MaxZ() - 0.6f));
@@ -359,8 +471,7 @@ int main() {
         fire.setCampfirePosition(firePos);
         fire.update(dt, static_cast<float>(now));
 
-
-        // 如果窗口尺寸变了，重建反射 FBO
+        // Resize reflection target when the window framebuffer changes.
         if (g_fbW != lastFbW || g_fbH != lastFbH) {
             water.resize(g_fbW, g_fbH);
             lastFbW = g_fbW;
@@ -370,18 +481,18 @@ int main() {
         // -------------------------
         // Pass A: Reflection FBO
         // -------------------------
-        // 构造镜像相机（关于 y = waterHeight 镜像）
+        // Reflection camera is mirrored about the water plane y = waterHeight.
         Camera camRef = camera;
         camRef.position.y = 2.0f * tc.waterHeight - camera.position.y;
         camRef.pivot.y    = 2.0f * tc.waterHeight - camera.pivot.y;
         glm::mat4 viewRef = camRef.getViewMatrix();
 
-        // clip plane：只保留水面以上（dot >= 0）
-        // y - waterY + eps >= 0 => y >= waterY - eps
+        // Clip plane for reflection rendering:
+        // Keep only geometry above the water plane (small epsilon reduces artifacts at the boundary).
         const float clipEps = 0.02f;
         glm::vec4 clipPlaneAbove(0.0f, 1.0f, 0.0f, -tc.waterHeight + clipEps);
 
-        // 给会参与反射绘制的 shader 设 clip plane
+        // Apply clip plane to shaders that use either gl_ClipDistance or manual discard.
         terrainShader.use();
         terrainShader.setVec4("uClipPlane", clipPlaneAbove);
 
@@ -392,14 +503,14 @@ int main() {
 
         water.beginReflectionPass();
 
-        // 反射 pass 中也画天空盒（用镜像相机）
+        // Skybox in reflection pass should also use the mirrored camera.
         sky.render(camRef, proj, environment);
 
-        // 反射 pass：同样送光照（cameraPos 用镜像相机更严谨）
+        // Lighting uniforms during reflection should be consistent with the mirrored camera position.
         lighting.applyFromEnvironment(terrainShader, camRef, environment);
         lighting.applyFromEnvironment(shader, camRef, environment);
 
-        // 画场景（不画水）
+        // Render scene graph (excluding water).
         world.drawRecursive(viewRef, proj);
 
         // --- Draw boat (reflection pass) ---
@@ -407,7 +518,9 @@ int main() {
             modelShader.use();
             modelShader.setVec4("uClipPlane", clipPlaneAbove);
 
-            // 固定位置（世界坐标）
+            // Boat placement:
+            //   - If using water height, boat rests on the water plane (+ offset).
+            //   - Otherwise uses g_boatPosWS.y (+ offset).
             glm::vec3 boatPos = g_boatPosWS;
             if (g_boatUseWaterHeight) {
                 boatPos.y = tc.waterHeight + g_boatYOffset;
@@ -420,7 +533,9 @@ int main() {
             M = glm::rotate(M, glm::radians(g_boatYawDeg), glm::vec3(0,1,0));
             M = glm::scale(M, glm::vec3(g_boatScale));
 
-            // 只对船局部禁用剔除，避免 glTF 绕序问题，同时不污染天空/地形状态
+            // Local cull override:
+            //   - Some glTF assets may have inconsistent winding.
+            //   - State is restored to avoid affecting other draws.
             GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
             glDisable(GL_CULL_FACE);
 
@@ -429,14 +544,15 @@ int main() {
             if (wasCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
         }
 
+        // Particles in reflection pass:
+        //   - Uses additive blending; clip plane ensures no underwater contribution.
         fire.render(camRef, viewRef, proj, clipPlaneAbove);
-
 
         water.endReflectionPass(g_fbW, g_fbH);
 
         glDisable(GL_CLIP_DISTANCE0);
 
-        // 还原 clip plane（永远不过裁剪）
+        // Disable clipping for subsequent passes by setting a plane far away.
         glm::vec4 clipPlaneOff(0.0f, 1.0f, 0.0f, 1000000.0f);
         terrainShader.use();
         terrainShader.setVec4("uClipPlane", clipPlaneOff);
@@ -479,18 +595,21 @@ int main() {
             if (wasCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
         }
 
-
-
-        //fire.render(camRef, viewRef, proj, clipPlaneAbove);
-
         // -------------------------
         // Pass C: Water surface
         // -------------------------
+        // Water shader samples reflection texture and applies lighting + Fresnel.
         water.render(camera, view, proj, viewRef, environment, lighting, (float)now);
 
-        // Campfire particles (draw after water; additive blend + no depth write)
+        // Campfire particles:
+        //   - Rendered after water so additive blend overlays correctly.
+        //   - Particle renderer disables depth writes internally to preserve depth testing.
         fire.render(camera, view, proj, clipPlaneOff);
 
+        // Emissive sun marker (debug/visual indicator).
+        // Notes:
+        //   - Only drawn when sun is above the horizon (sunDir.y > 0).
+        //   - Uses uEmissive path in basic.frag to bypass lighting.
         glm::vec3 worldPivot(0.0f, 0.0f, 0.0f);
         glm::vec3 sunDir = glm::normalize(environment.sun().light().direction);
 
@@ -511,7 +630,6 @@ int main() {
             boxMesh.draw();
             shader.setInt("uEmissive", 0);
         }
-
 
         glfwSwapBuffers(window);
     }
